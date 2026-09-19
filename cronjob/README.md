@@ -114,6 +114,15 @@ metadata. The report contains `index_version`, `scanned`, `images`,
 for invalid inputs or failure. See [the source field mapping](../data_spec.md#search-filter-metadata)
 and [filter semantics](../docs/multimodal_search_spec.md#metadata-filters).
 
+## Share the catalogue
+
+See [the catalogue guide](../catalogue/README.md) to export or restore the shared
+SQLite snapshot in Git LFS. `python3 scripts/export_catalogue.py` creates a
+compressed backup at `catalogue/catalog.sqlite3.gz` from
+`data/search/catalog.sqlite3`. Use `--source` and `--output` for other paths.
+It removes embedding cache rows from the copy and compacts it before writing;
+the local embedding cache stays enabled and its contents are preserved.
+
 ## Convert silver CSV to gold Parquet
 
 Install the locked environment and run:

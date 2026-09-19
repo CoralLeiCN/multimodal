@@ -170,3 +170,11 @@ in the same generation and Qdrant collection. Each sample adds or updates its
 selected image rows, source associations, and filter metadata; images outside
 that sample remain present. Selection snapshots contain the accumulated catalogue.
 See [permanent collection setup](cronjob/README.md#permanent-collection).
+
+The shared `catalogue/catalog.sqlite3.gz` snapshot is tracked in Git LFS. It
+preserves catalogue metadata and image attribution with an empty
+`embedding_cache` table. The export command removes cached vectors from the
+backup's unused pages as well as its rows. Local ingestion continues to use
+the embedding cache under the ignored `data/search/` directory. See the
+[export and restore guide](catalogue/README.md); the corresponding Qdrant
+collection and local thumbnails are required to use a restored index.

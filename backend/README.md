@@ -23,6 +23,9 @@ temporary failures. “Find similar” uses the stored Qdrant vector.
 The server applies the Alembic migration on startup. The ingestion command also
 applies it before creating a run. The SQLite path defaults to
 `data/search/catalog.sqlite3`; Qdrant persists under `data/search/qdrant/`.
+The [shared catalogue snapshot](../catalogue/README.md) is stored in Git LFS
+with an empty embedding cache. Ingestion continues to cache embeddings in the
+ignored local database; exported snapshots exclude those cached vectors.
 Use `SQLITE_PATH`, `IMAGE_ROOT`, `QDRANT_URL`, `QDRANT_API_KEY`, `EMBEDDING_MODEL`,
 and `EMBEDDING_DIMENSIONS` to override settings. Relative filesystem settings are
 resolved against the repository root.
