@@ -313,6 +313,56 @@ button:not(:disabled):active {
   color: #7e8378;
   margin: 12px 0 0 4px;
 }
+.image-examples {
+  margin: 18px 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.image-examples > legend {
+  padding: 0;
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #6f7865;
+}
+.image-example-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  max-width: 420px;
+}
+.image-example {
+  padding: 6px;
+  border: 1px solid #dadfd0;
+  border-radius: 8px;
+  background: #fffef9;
+  color: #34412e;
+}
+.image-example:hover,
+.image-example[aria-pressed="true"] {
+  border-color: #718143;
+  background: #edf3df;
+}
+.image-example[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 1px #718143;
+}
+.image-example:focus-visible {
+  outline: 2px solid #718143;
+  outline-offset: 3px;
+}
+.image-example img {
+  display: block;
+  width: 100%;
+  height: 100px;
+  object-fit: contain;
+  border-radius: 4px;
+  background: #edeee5;
+}
+.image-example span {
+  display: block;
+  margin-top: 7px;
+  font-size: 11px;
+}
 .collection-section {
   border-top: 1px solid #dedfd5;
   padding: 35px 0 50px;

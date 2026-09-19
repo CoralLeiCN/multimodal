@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs"
 import { expect, test } from "@playwright/test"
 import { mockChat } from "./chat-fixture"
 
@@ -134,6 +135,48 @@ test("uploads images and shows backend errors without discarding results", async
   expect(uploadType).toContain("multipart/form-data")
   await expect(page.getByTestId("image-card")).toHaveCount(2)
 })
+
+for (const width of [1280, 390]) {
+  test(`selects and searches with image examples at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 })
+    const uploads: Buffer[] = []
+    await page.route("**/api/v1/search/image", async (route) => {
+      uploads.push(route.request().postDataBuffer()!)
+      await route.fulfill({ json: { index_version: "test", indexed_images: 2, duration_ms: 10, results: [image] } })
+    })
+    await page.goto("/")
+    await page.getByLabel("Place", { exact: true }).selectOption("London")
+    await page.getByRole("button", { name: "Apply filters" }).click()
+    await page.getByRole("tab", { name: "Search with an image" }).click()
+    const examples = page.getByRole("group", { name: "Example images" })
+    await expect(examples.getByRole("button")).toHaveCount(3)
+    await expect(page.getByRole("button", { name: "Explore", exact: true })).toBeDisabled()
+    for (const [name, filename] of [["Coke Cola", "Coke Cola.jpg"], ["Modal", "Modal.jpg"], ["Tech: Europe", "Tech Europe.jpg"]]) {
+      const option = examples.getByRole("button", { name: `Select ${name} example` })
+      await expect.poll(() => option.locator("img").evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0)
+      await option.click()
+      await expect(option).toHaveAttribute("aria-pressed", "true")
+      await expect(examples.locator('[aria-pressed="true"]')).toHaveCount(1)
+      await expect(page.locator(".upload-input")).toContainText(filename)
+      await expect.poll(() => page.getByAltText("Your query").evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0)
+      const count = uploads.length
+      await page.getByRole("button", { name: "Explore", exact: true }).click()
+      await expect.poll(() => uploads.length).toBe(count + 1)
+      const multipart = uploads.at(-1)!
+      expect(multipart.includes(readFileSync(new URL(`../../examples/images/${filename}`, import.meta.url)))).toBe(true)
+      expect(multipart.toString()).toContain(`filename="${filename}"`)
+      expect(multipart.toString()).toContain("London")
+      await expect(page.getByRole("heading", { name: "Your discoveries" })).toBeVisible()
+    }
+    await page.screenshot({ path: `/tmp/collection-image-examples-${width}.png`, fullPage: true })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    await page.locator('input[type="file"]').setInputFiles({ name: "own.png", mimeType: "image/png", buffer: Buffer.from("fixture") })
+    await expect(examples.locator('[aria-pressed="true"]')).toHaveCount(0)
+    await expect(page.locator(".upload-input")).toContainText("own.png")
+    await page.getByRole("button", { name: "Remove uploaded image" }).click()
+    await expect(page.getByRole("button", { name: "Explore", exact: true })).toBeDisabled()
+  })
+}
 
 test("finds similar images and fits a phone viewport", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })

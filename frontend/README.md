@@ -14,6 +14,12 @@ computer” in grey, ready to submit with Explore. Focusing the field clears the
 example so users can type their own query. Later focus changes preserve typed
 queries. Returning to the collection selects a fresh random example.
 
+The image search tab offers three selectable thumbnails from `examples/images`:
+Coke Cola, Modal, and Tech: Europe. Selecting an example fills the image preview;
+Explore submits it through the same image search endpoint and filters as an upload.
+Users can switch examples, remove the selection, or replace it with their own image.
+Vite bundles the example images with the frontend for development and production.
+
 The `/create` page contains only brand configuration: Brand name, Brand description,
 Brand colors palette, Personality, Typography, and Illustration style. Personality
 is free text (for example, premium, calm, technical, optimistic). Name and description

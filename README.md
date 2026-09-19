@@ -107,6 +107,8 @@ a sample of 50 local images using the
 [backend setup guide](backend/README.md), then build or run the
 [frontend](frontend/README.md). The application is served at
 `http://127.0.0.1:8000`, with API documentation at `/docs`.
+Image search supports uploads and three selectable presets from `examples/images`.
+Choose a thumbnail, then select Explore to search with that image.
 Creation year, creation place, and category filters apply to browsing, text,
 image, and similar-image searches. Qdrant indexes these metadata fields and
 The SQL catalogue retains their source labels and date ranges.

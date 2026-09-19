@@ -24,6 +24,9 @@ Support these actions:
 
 - Search by text, such as “a brass scientific instrument” or “a steam locomotive”.
 - Upload an image to find visually or semantically similar collection images.
+- Select one of three image examples (Coke Cola, Modal, or Tech: Europe) from
+  `examples/images` in the image search tab. Preview the selection and submit it
+  with Explore through the image upload endpoint, retaining the current filters.
 - Select “Find similar” on a result to search using its stored embedding.
 - Filter browsing and every search by creation year range, creation place, and category.
 - Open an image detail panel with its title, description, source identifiers,

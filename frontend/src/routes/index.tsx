@@ -12,6 +12,9 @@ import {
   X,
 } from "lucide-react"
 import { type FormEvent, useEffect, useRef, useState } from "react"
+import cokeColaExample from "../../../examples/images/Coke Cola.jpg"
+import modalExample from "../../../examples/images/Modal.jpg"
+import techEuropeExample from "../../../examples/images/Tech Europe.jpg"
 import {
   browseImages,
   filterOptions,
@@ -38,6 +41,11 @@ const suggestions = [
 ]
 
 const searchExamples = ["a brass microscope", "an early computer"]
+const imageExamples = [
+  { name: "Coke Cola", filename: "Coke Cola.jpg", url: cokeColaExample },
+  { name: "Modal", filename: "Modal.jpg", url: modalExample },
+  { name: "Tech: Europe", filename: "Tech Europe.jpg", url: techEuropeExample },
+]
 
 function randomSuggestion() {
   return searchExamples[Math.floor(Math.random() * searchExamples.length)]
@@ -78,6 +86,9 @@ export function CollectionPage() {
   const [mode, setMode] = useState<"text" | "image">("text")
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState("")
+  const [selectedExample, setSelectedExample] = useState("")
+  const [loadingExample, setLoadingExample] = useState(false)
+  const exampleRequest = useRef<AbortController | null>(null)
   const [results, setResults] = useState<SearchResponse | null>(null)
   const [label, setLabel] = useState("")
   const [busy, setBusy] = useState(false)
@@ -99,6 +110,7 @@ export function CollectionPage() {
     return () => URL.revokeObjectURL(url)
   }, [file])
   useEffect(() => () => request.current?.abort(), [])
+  useEffect(() => () => exampleRequest.current?.abort(), [])
 
   async function perform(
     action: (signal: AbortSignal) => Promise<SearchResponse>,
@@ -200,7 +212,7 @@ export function CollectionPage() {
     event.preventDefault()
     if (mode === "text") {
       if (query.trim()) runSearch({ type: "text", text: query.trim() })
-    } else if (file) runSearch({ type: "image", file })
+    } else if (file && !loadingExample) runSearch({ type: "image", file })
   }
 
   function findSimilar(image: ImageRead) {
@@ -215,8 +227,16 @@ export function CollectionPage() {
     setError("")
     setQuery(randomSuggestion())
     setIsExample(true)
-    setFile(null)
+    clearFile()
     setLastSearch(null)
+  }
+
+  function clearFile() {
+    exampleRequest.current?.abort()
+    setLoadingExample(false)
+    setSelectedExample("")
+    setFile(null)
+    if (fileInput.current) fileInput.current.value = ""
   }
 
   function chooseFile(nextFile: File | undefined) {
@@ -229,8 +249,30 @@ export function CollectionPage() {
       setError("Choose an image smaller than 10 MiB.")
       return
     }
+    clearFile()
     setFile(nextFile)
     setError("")
+  }
+
+  async function chooseExample(example: (typeof imageExamples)[number]) {
+    clearFile()
+    const controller = new AbortController()
+    exampleRequest.current = controller
+    setLoadingExample(true)
+    setError("")
+    try {
+      const response = await fetch(example.url, { signal: controller.signal })
+      if (!response.ok) throw new Error("Could not load the example image. Please try again.")
+      const blob = await response.blob()
+      if (controller.signal.aborted) return
+      setFile(new File([blob], example.filename, { type: "image/jpeg" }))
+      setSelectedExample(example.url)
+    } catch (caught) {
+      if (!controller.signal.aborted)
+        setError(caught instanceof Error ? caught.message : "Could not load the example image.")
+    } finally {
+      if (!controller.signal.aborted) setLoadingExample(false)
+    }
   }
 
   const images = results?.results ?? collection.data?.pages.flatMap((page) => page.items) ?? []
@@ -352,7 +394,11 @@ export function CollectionPage() {
                         <ImagePlus size={26} strokeWidth={1.5} />
                       )}
                       <span>
-                        {file ? file.name : "Choose an image to explore"}
+                        {loadingExample
+                          ? "Loading example…"
+                          : file
+                            ? file.name
+                            : "Choose an image to explore"}
                         <small>JPG or PNG, up to 10 MiB</small>
                       </span>
                     </label>
@@ -361,10 +407,7 @@ export function CollectionPage() {
                         type="button"
                         className="remove-file"
                         aria-label="Remove uploaded image"
-                        onClick={() => {
-                          setFile(null)
-                          if (fileInput.current) fileInput.current.value = ""
-                        }}
+                        onClick={clearFile}
                       >
                         <X size={18} />
                       </button>
@@ -373,7 +416,9 @@ export function CollectionPage() {
                 )}
                 <Button
                   type="submit"
-                  disabled={!textAvailable || (mode === "text" ? !query.trim() : !file)}
+                  disabled={
+                    !textAvailable || (mode === "text" ? !query.trim() : !file || loadingExample)
+                  }
                   className="search-submit"
                   aria-label="Explore"
                 >
@@ -381,6 +426,26 @@ export function CollectionPage() {
                   <span>Explore</span>
                 </Button>
               </form>
+              {mode === "image" && (
+                <fieldset className="image-examples" aria-label="Example images">
+                  <legend>Or try an example</legend>
+                  <div className="image-example-options">
+                    {imageExamples.map((example) => (
+                      <button
+                        key={example.url}
+                        type="button"
+                        className="image-example"
+                        aria-label={`Select ${example.name} example`}
+                        aria-pressed={selectedExample === example.url}
+                        onClick={() => void chooseExample(example)}
+                      >
+                        <img src={example.url} alt="" />
+                        <span>{example.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+              )}
               {mode === "image" && (
                 <p className="upload-notice">
                   Your image is sent to Google to generate an embedding. We use that embedding to
