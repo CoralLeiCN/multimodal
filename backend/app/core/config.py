@@ -33,6 +33,11 @@ class Settings(BaseSettings):
         default=None, alias="DATABASE_URL_UNPOOLED"
     )
     image_root: Path = ROOT / "data/images"
+    r2_endpoint_url: str | None = None
+    r2_bucket: str | None = None
+    r2_access_key_id: SecretStr | None = None
+    r2_secret_access_key: SecretStr | None = None
+    r2_prefix: str = ""
     max_image_bytes: int = 10 * 1024 * 1024
     max_image_pixels: int = 20_000_000
 

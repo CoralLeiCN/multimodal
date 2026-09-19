@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sample local images and ingest Gemini embeddings into Qdrant."""
+"""Index local images into Qdrant and save their configured R2 URLs in PostgreSQL."""
 
 import argparse
 import json
@@ -29,7 +29,7 @@ def main(argv=None):
     parser.add_argument(
         "--prepare-only",
         action="store_true",
-        help="Save the sample and tracking rows without external requests",
+        help="Save catalogue rows without calling Gemini, Qdrant, or R2",
     )
     parser.add_argument("--resume")
     args = parser.parse_args(argv)

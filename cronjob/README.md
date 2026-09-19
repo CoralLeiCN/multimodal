@@ -26,7 +26,7 @@ matched in full against the image root and its immediate extraction folders.
 `--metadata PATH` can be repeated for specific bronze exports. `--seed` changes
 the sample, `--scan-limit` accepts up to 10,000 records, and `--limit` accepts up
 to 1,000 images. `--prepare-only` saves the selection snapshot and catalogue tracking
-rows without contacting Gemini or Qdrant.
+rows without contacting Gemini, Qdrant, or R2.
 
 Each run prints its ID. Resume an interrupted or prepared run with:
 
@@ -44,7 +44,7 @@ Permanent collection updates remain unavailable until successfully resumed.
 
 Outputs live under `data/search/`: `embedding_cache.sqlite3`, `selections/*.jsonl`,
 `runs/*.json`, and persistent Qdrant storage. Each JSONL selection row includes
-the local image path, checksum, source associations, licence, copyright, credit,
+the local image path, nullable `r2_url`, checksum, source associations, licence, copyright, credit,
 and `filter_metadata`. Associations include original `date` text, `places`,
 `categories`, and derived `date_ranges`. Qdrant receives normalized filter rows
 and four payload indexes for place/category keywords and start/end years.
@@ -297,6 +297,20 @@ Set `DATABASE_URL` and `DATABASE_URL_UNPOOLED` through the
 Qdrant collection. Indexing and metadata refresh acquire the same database lock
 across collaborators; a second writer exits with an error. Dry runs stay local.
 Keep source exports and image files available on the indexing machine.
+
+With `R2_ENDPOINT_URL` configured, indexing reads local images for embeddings
+and automatically writes `images.r2_url` to Neon using
+`R2_ENDPOINT_URL/R2_BUCKET/[R2_PREFIX/]relative_path` with URL-encoded object keys.
+It trusts the completed R2 migration and makes no R2 requests. New, updated, and
+resumed generations receive these links, including `--prepare-only` snapshots;
+no separate linking command is needed.
+
+Set `IMAGE_ROOT` to the parent `data/images/` directory, keeping
+`smg_all_medium_thumnail_images_09_04_2025/` in the relative path. Keep
+`R2_PREFIX=` empty for the current upload; there is no extra `images/` in R2.
+Without an R2 endpoint, indexing keeps the local-only behavior. The
+[R2 catalogue linking command](../backend/README.md#r2-catalogue-links) remains
+available as an optional remote audit/backfill.
 
 `SEARCH_DATA_DIR` defaults to `data/search/` and holds the SQLite embedding cache,
 selection snapshots, and reports. `DATABASE_URL` is required for catalogue writes.

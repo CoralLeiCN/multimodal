@@ -628,6 +628,9 @@
               }
             },
             "description": "Gateway Timeout"
+          },
+          "307": {
+            "description": "Temporary redirect to a signed private R2 image URL"
           }
         }
       }

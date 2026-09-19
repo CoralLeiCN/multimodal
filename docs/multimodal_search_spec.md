@@ -161,10 +161,12 @@ flowchart LR
     A --> Q
     A --> M[Indexed image endpoint]
     M --> D
+    M --> R[R2 signed image delivery]
 ```
 
 At startup, the API reads the active index version and its Qdrant collection name
-from the SQL catalogue. It reads local image bytes when requested and keeps using that
+from the SQL catalogue. It resolves catalogued images to signed R2 URLs when configured,
+or reads local image bytes, and keeps using that
 generation until restarted. Indexing builds a new generation independently.
 
 Use Vite during frontend development, with `/api/v1` proxied to FastAPI. Serve the
@@ -299,12 +301,30 @@ Minimum catalogue tables:
 
 | Table | Required fields and constraints |
 | --- | --- |
-| `images` | Primary key `(generation_id, image_id)`; normalized source location, relative local path, image SHA-256, MIME type, decoded width and height, and JSON `filter_metadata`. |
+| `images` | Primary key `(generation_id, image_id)`; normalized source location, relative local path, nullable `r2_url`, image SHA-256, MIME type, decoded width and height, and JSON `filter_metadata`. |
 | `image_associations` | Generation and image reference, source entry identifier, `record_uid`, `image_uid`, source JSON, title, description, original date text, JSON `places`, `categories`, and `date_ranges`, maker, catalogue identifiers, licence, copyright, and credit. |
 | `image_ingestions` | Unique `(index_version, image_id)`; image checksum, embedding configuration fingerprint, Qdrant collection and point ID, status, attempt count, last error, run ID, and timestamps including `indexed_at`. |
 | `index_generations` | Version, unique Qdrant collection name, model, dimension, preprocessing and query format versions, selection ID, status (`building`, `ready`, `failed`), count, and timestamps. |
 | Run reports | Each generation ID is also its run ID. The catalogue holds generation status and per-image attempts; `runs/<run_id>.json` records indexed, embedded, and reused counts. |
 | `service_state` | Singleton row containing the active ready index version. |
+
+`r2_url` is a permanent, URL-encoded Cloudflare S3 object URL, without credentials
+or expiring signature parameters. The bucket remains private. The R2 linking
+command verifies object SHA-256 metadata before updating all matching catalogue
+rows atomically, across generations. It preserves source locations and image
+IDs. This command is optional. When `R2_ENDPOINT_URL` is configured, indexing
+reads local bytes and automatically derives URLs from the endpoint, bucket,
+optional prefix, and URL-encoded local relative path. It trusts that the completed
+upload matches the local files and makes no R2 requests. New and updated rows,
+resumed generations, and selection snapshots receive these URLs. Without an
+endpoint, new rows have no R2 link and changed paths or checksums clear old links.
+When R2 is configured and an image has a stored URL, the image API validates active catalogue
+membership and the configured object location, then returns a 307 redirect to a
+signed GET URL valid for 300 seconds. Redirect responses use `Cache-Control:
+no-store`. The frontend follows the redirect directly to the private R2 bucket.
+Missing credentials, invalid configuration, or conflicting stored URLs produce
+a sanitized 503 error. Unknown or inactive image IDs produce 404 before signing.
+With no R2 endpoint or no stored link, local file serving remains available.
 
 For agent requests containing a collection record ID such as `co25823`, use the
 [collection ID lookup procedure](collection_id_lookup.md). Match `record_uid`
@@ -500,7 +520,7 @@ client generation. Routes below use the frontend origin or the Vite API proxy.
 | `GET /api/v1/filters` | Active `index_version`, `places`, `categories`, `date_min`, and `date_max`. |
 | `GET /api/v1/images` | Browse with `limit`, optional `cursor`, `date_from`, `date_to`, repeated `place` and `category`; return items, `matching_images`, and the next cursor. |
 | `GET /api/v1/images/{image_id}` | Selected image metadata and its source associations. |
-| `GET /api/v1/images/{image_id}/file` | Validated image bytes for the requested ID. |
+| `GET /api/v1/images/{image_id}/file` | A temporary signed R2 redirect or validated local bytes for the requested active image ID. |
 | `POST /api/v1/search/text` | JSON with `query`, optional `limit` and `filters` object; return ranked image results. |
 | `POST /api/v1/search/image` | Multipart upload with `image`, optional `limit`, `date_from`, `date_to`, and repeated `place` and `category` fields; return ranked results. |
 | `POST /api/v1/images/{image_id}/similar` | Optional JSON `limit` and `filters`; use the vector in Qdrant and exclude the selected image. |
@@ -551,7 +571,7 @@ Use a consistent error body with `code` and a safe, actionable `message`:
 | `503` | No usable index, incompatible configuration, or unavailable embedding provider or Qdrant service. |
 | `504` | Search exceeds the 30-second request deadline. |
 
-Browsing uses the catalogue and local files. “Find similar” uses Qdrant and continues to
+Browsing uses the catalogue and configured R2 delivery or local files. “Find similar” uses Qdrant and continues to
 work when Gemini is unavailable. Qdrant failure makes vector search unavailable
 while browsing remains usable. Search failure must be shown as an error. Serve
 files only through catalogue IDs with paths constrained to configured image roots.

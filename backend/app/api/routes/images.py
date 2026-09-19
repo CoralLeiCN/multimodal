@@ -2,7 +2,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
 from app.api.deps import FilterDep, SearchDep
 from app.schemas import BrowseResponse, ImageRead, SearchResponse, SimilarQuery
@@ -25,11 +25,21 @@ def image_detail(image_id: UUID, service: SearchDep):
     return service.image(str(image_id))
 
 
-@router.get("/{image_id}/file", response_class=FileResponse)
+@router.get(
+    "/{image_id}/file",
+    response_class=FileResponse,
+    responses={
+        307: {"description": "Temporary redirect to a signed private R2 image URL"}
+    },
+)
 def image_file(image_id: UUID, service: SearchDep):
-    path, mime = service.image_path(str(image_id))
+    source, mime = service.image_source(str(image_id))
+    if isinstance(source, str):
+        return RedirectResponse(
+            source, status_code=307, headers={"Cache-Control": "no-store"}
+        )
     return FileResponse(
-        path, media_type=mime, headers={"Cache-Control": "private, max-age=300"}
+        source, media_type=mime, headers={"Cache-Control": "private, max-age=300"}
     )
 
 

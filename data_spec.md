@@ -14,6 +14,29 @@ This project uses the `with_CC_images` exports from the
 
 The spelling `thumnail` is the extracted directory's actual name.
 
+## R2 image copies
+
+The medium thumbnails have also been copied to the private Cloudflare R2 bucket
+`smg-images`, preserving paths relative to `data/images/`. Object keys start with
+`smg_all_medium_thumnail_images_09_04_2025/`; there is no extra `images/` prefix.
+The upload verified 149,232 JPEGs totaling 2,159,639,760 bytes against local
+checksums. Local originals and their per-image rights metadata are retained.
+
+The PostgreSQL catalogue's nullable `images.r2_url` stores a permanent,
+URL-encoded S3 object URL. With R2 configured, indexing derives this URL from
+the local relative path and optional prefix, trusting the completed migration
+without contacting R2. Embeddings still use local bytes. The optional linking
+command can audit remote SHA-256 metadata. This is not a public or expiring URL.
+The original `location`, `relative_path`, and image IDs keep their source meaning.
+When R2 is configured, the image endpoint uses the stored reference to generate
+a five-minute signed GET URL after checking active catalogue membership. Image
+bytes load directly from the private bucket, with attribution retained in the
+app. Local-only configurations and unlinked rows use files under `IMAGE_ROOT`.
+Only indexed catalogue rows receive links; uploading an image does not index it.
+See [R2 catalogue links](backend/README.md#r2-catalogue-links) for the mapping rule and optional audit command.
+
+## Local processing
+
 The bronze layer preserves the original JSON exports for reference. The silver
 layer contains the official processed CSV. `cronjob/silver_to_gold.py` uses pandas
 to convert that CSV into `data/gold/object_records.parquet`, with PyArrow as the

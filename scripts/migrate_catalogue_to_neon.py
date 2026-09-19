@@ -10,6 +10,7 @@ from app.models import Generation, Image, ServiceState
 from app.services.catalogue_transfer import transfer_catalogue
 from app.services.qdrant_store import VectorStore
 from sqlalchemy import create_engine
+from sqlalchemy.orm import defer
 from sqlmodel import Session, select
 
 
@@ -58,7 +59,9 @@ def main():
                         "Embedding settings do not match the source catalogue."
                     )
                 images = session.exec(
-                    select(Image).where(Image.generation_id == generation.id)
+                    select(Image)
+                    .options(defer(Image.r2_url))
+                    .where(Image.generation_id == generation.id)
                 ).all()
                 if generation.count != len(images):
                     raise ValueError(

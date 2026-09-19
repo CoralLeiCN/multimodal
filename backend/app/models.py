@@ -31,6 +31,7 @@ class Image(SQLModel, table=True):
     image_id: str = Field(primary_key=True)
     location: str
     relative_path: str
+    r2_url: str | None = None
     checksum: str
     mime_type: str
     width: int

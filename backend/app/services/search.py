@@ -21,6 +21,7 @@ from app.schemas import (
     StatusResponse,
 )
 from app.services.embeddings import SearchError
+from app.services.image_delivery import ImageDelivery
 from app.services.metadata import catalogue_filter, labels
 from app.services.selection import safe_path
 
@@ -32,6 +33,10 @@ class SearchService:
         self._active = None
         self._verified = False
         self._slots = threading.BoundedSemaphore(4)
+        self.image_delivery = ImageDelivery(settings)
+
+    def close(self):
+        self.image_delivery.close()
 
     def generation(self, require_vectors=False) -> Generation:
         with Session(self.engine) as session:
@@ -165,7 +170,7 @@ class SearchService:
             )
         return result
 
-    def image_path(self, image_id: str):
+    def image_source(self, image_id: str):
         generation = self.generation()
         with Session(self.engine) as session:
             image = session.get(Image, (generation.id, image_id))
@@ -175,6 +180,8 @@ class SearchService:
                 "image_missing",
                 404,
             )
+        if url := self.image_delivery.signed_url(image):
+            return url, image.mime_type
         return safe_path(self.settings, image.relative_path), image.mime_type
 
     @logfire.instrument("catalogue.filter_options", extract_args=False)

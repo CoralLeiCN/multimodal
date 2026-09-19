@@ -62,7 +62,7 @@ publishing a replacement index. The frontend build is served at `/` when
 | `GET /api/v1/filters` | Available places, categories, and minimum/maximum years in the active sample. |
 | `GET /api/v1/images?limit=24` | Browse with an optional `cursor` and metadata filters; includes `matching_images`. |
 | `GET /api/v1/images/{image_id}` | Image metadata and attribution. |
-| `GET /api/v1/images/{image_id}/file` | Local image bytes. |
+| `GET /api/v1/images/{image_id}/file` | Temporary signed R2 redirect for catalogued cloud images, or local image bytes. |
 | `POST /api/v1/search/text` | Text query as JSON. |
 | `POST /api/v1/search/image` | Multipart image query. |
 | `POST /api/v1/images/{image_id}/similar` | Similar images using a stored vector. |
@@ -252,6 +252,65 @@ requests. The cache is excluded because it lives in a separate database.
 After import, check `/api/v1/status`, browse with filters, open an image, and use
 “Find similar.” Each collaborator must use the matching Qdrant collection and
 embedding settings. A shared catalogue does not distribute thumbnails.
+
+### R2 catalogue links
+
+`images.r2_url` holds a permanent Cloudflare S3 object URL. It is
+nullable and separate from the source `location` and local `relative_path`.
+When `R2_ENDPOINT_URL` is configured and a row has an R2 URL, the API's
+`/file` route checks membership in the active generation and returns a 307
+redirect to a fresh signed GET URL, valid for five minutes. Redirects use
+`Cache-Control: no-store` so clients request a new signature when needed. The
+browser downloads directly from the private bucket; credentials stay on the
+server. Browse and image-detail views work without local thumbnails.
+
+The stored URL must exactly match the configured endpoint, bucket, prefix, and
+relative path. Invalid configuration or a mismatched reference returns a
+sanitized 503 error. With no R2 endpoint or no R2 URL, the route uses
+the existing validated local file. Unknown or inactive image IDs return 404
+before signing. The app closes its shared R2 client on shutdown.
+
+Configure `R2_ENDPOINT_URL` (without the bucket path), `R2_BUCKET`,
+`R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY` in `.env`. Keep `R2_PREFIX=` empty
+for the current upload: object keys begin with the extracted thumbnail folder.
+An Object Read token scoped to the bucket is enough for delivery and linking.
+Leave `R2_ENDPOINT_URL` empty to use local files only. The existing frontend
+uses the same API image URLs and follows redirects without additional settings.
+The upload sets each object's `sha256` metadata to the original image checksum.
+
+Indexing reads local image bytes for Gemini and saves R2 URLs in Neon automatically.
+It trusts the completed upload: no R2 HEAD, download, or upload requests are made.
+URLs follow `R2_ENDPOINT_URL/R2_BUCKET/[R2_PREFIX/]relative_path`, with object keys
+URL-encoded. For the current layout, set `IMAGE_ROOT` to the parent `data/images/`
+directory so the extracted thumbnail folder stays in each key; do not add an
+`images/` prefix. Creating, extending, or resuming a generation derives its URLs
+from this rule, including selection snapshots. URL construction needs no R2
+credentials; browser delivery still needs the read token.
+
+The following command is an optional remote audit/backfill, not an indexing step:
+
+```sh
+# Verify remote SHA-256 metadata and write a plan without changing the database.
+uv run --package multimodal-backend scripts/link_r2_images.py
+# Apply Alembic and atomically populate the verified URLs.
+uv run --package multimodal-backend scripts/link_r2_images.py --apply
+```
+
+Use `--env-file PATH` for another database and `--report PATH` to choose the
+JSON report; the default is `data/processed/r2_catalogue_urls.json`. The report
+includes previous URLs and the verified replacements. The command reads all
+catalogue generations, checks every referenced R2 object, uses the shared writer
+lock, and refuses mismatched checksums, conflicting URLs, or concurrent row
+changes. A failed update rolls back every URL; an applied empty schema migration
+may remain. Repeat runs verify the same objects and report zero changed links.
+
+With no R2 endpoint configured, new indexing rows have no R2 URL. Local-only
+reindexing preserves existing links for unchanged bytes and paths, and clears
+them when either changes. With R2 configured, indexing recomputes the URL and
+trusts that the remote object matches the local image, including changed files.
+The legacy schema-0003 SQLite importer initializes URLs to NULL.
+This command does not create catalogue rows, change image IDs, or regenerate
+vectors. Source attribution and licence fields remain in the catalogue.
 
 ### Indexing and maintenance
 

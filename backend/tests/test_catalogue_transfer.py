@@ -1,6 +1,6 @@
 import pytest
 from app.services.catalogue_transfer import TABLES, fingerprint, transfer_catalogue
-from sqlalchemy import event, func, select
+from sqlalchemy import create_engine, event, func, select
 
 
 @pytest.fixture
@@ -34,3 +34,21 @@ def test_transfer_rolls_back_every_table_on_failure(setup, destination):
         assert all(
             target.scalar(select(func.count()).select_from(t)) == 0 for t in TABLES
         )
+
+
+def test_legacy_sqlite_without_r2_column_imports_as_null(setup, destination):
+    legacy = create_engine("sqlite://")
+    try:
+        for table in TABLES:
+            table.create(legacy)
+        with setup[1].connect() as source:
+            transfer_catalogue(source, legacy)
+        with legacy.begin() as connection:
+            connection.exec_driver_sql("ALTER TABLE images DROP COLUMN r2_url")
+        with legacy.connect() as source:
+            assert transfer_catalogue(source, destination)["images"] == 3
+            with destination.connect() as target:
+                for table in TABLES:
+                    assert fingerprint(source, table) == fingerprint(target, table)
+    finally:
+        legacy.dispose()

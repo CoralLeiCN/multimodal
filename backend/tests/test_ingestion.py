@@ -1,9 +1,81 @@
+import json
+
 import pytest
 from app.models import EmbeddingCache, Generation, Image, Ingestion, ServiceState
 from app.services.embeddings import SearchError
 from app.services.ingestion import create_generation, run_ingestion
 from sqlalchemy import inspect
 from sqlmodel import Session, select
+
+
+def test_r2_indexing_uses_local_bytes_and_links_new_and_appended_images(
+    setup, monkeypatch
+):
+    settings, engine, selected, report, _, vectors, embeddings = setup
+    settings.r2_endpoint_url = "https://" + "a" * 32 + ".r2.cloudflarestorage.com"
+    settings.r2_bucket = "smg-images"
+    settings.qdrant_collection_name = "r2_indexing_test"
+
+    def forbid_r2(*args, **kwargs):
+        pytest.fail("Indexing must not contact R2")
+
+    monkeypatch.setattr("app.services.r2_catalogue.boto3.client", forbid_r2)
+    local_bytes = {
+        (settings.image_root / item["relative_path"]).read_bytes() for item in selected
+    }
+    embed = embeddings.embed
+
+    def embed_local(*, image, mime_type):
+        assert image in local_bytes
+        return embed(image=image, mime_type=mime_type)
+
+    monkeypatch.setattr(embeddings, "embed", embed_local)
+    generation_id = create_generation(engine, settings, selected[:1], report)
+    snapshot = settings.data_dir / "selections" / f"{generation_id}.jsonl"
+    rows = [json.loads(line) for line in snapshot.read_text().splitlines()]
+    assert rows[0]["r2_url"] == settings.r2_endpoint_url + "/smg-images/red.png"
+    run_ingestion(engine, settings, generation_id, embeddings, vectors)
+    assert create_generation(engine, settings, selected, report) == generation_id
+    result = run_ingestion(engine, settings, generation_id, embeddings, vectors)
+    assert result["indexed"] == 3
+    assert embeddings.calls == 3
+    with Session(engine) as session:
+        images = session.exec(
+            select(Image).where(Image.generation_id == generation_id)
+        ).all()
+        assert all(
+            image.r2_url
+            == settings.r2_endpoint_url + "/smg-images/" + image.relative_path
+            for image in images
+        )
+    assert all(json.loads(line)["r2_url"] for line in snapshot.read_text().splitlines())
+
+
+@pytest.mark.parametrize("already_ready", [False, True])
+def test_resume_adds_r2_links_to_existing_generation(setup, monkeypatch, already_ready):
+    settings, engine, _, _, generation_id, vectors, embeddings = setup
+    if already_ready:
+        run_ingestion(engine, settings, generation_id, embeddings, vectors)
+    settings.r2_endpoint_url = "https://" + "a" * 32 + ".r2.cloudflarestorage.com"
+    settings.r2_bucket = "smg-images"
+    settings.r2_prefix = "archive"
+
+    def forbid_r2(*args, **kwargs):
+        pytest.fail("Resume must not contact R2")
+
+    monkeypatch.setattr("app.services.r2_catalogue.boto3.client", forbid_r2)
+    result = run_ingestion(engine, settings, generation_id, embeddings, vectors)
+    assert result["embedded"] == (0 if already_ready else 3)
+    assert embeddings.calls == 3
+    with Session(engine) as session:
+        images = session.exec(select(Image)).all()
+        assert all(
+            image.r2_url
+            == settings.r2_endpoint_url + "/smg-images/archive/" + image.relative_path
+            for image in images
+        )
+    snapshot = settings.data_dir / "selections" / f"{generation_id}.jsonl"
+    assert all(json.loads(line)["r2_url"] for line in snapshot.read_text().splitlines())
 
 
 def test_completed_run_publishes_and_reuses_embeddings(setup, cache_engine):

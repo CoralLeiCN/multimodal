@@ -27,13 +27,16 @@ def create_app(settings=None, *, vectors=None, embeddings=None):
         store = vectors or VectorStore(settings)
         embedder = embeddings or GeminiEmbeddings(settings)
         application.state.search = SearchService(engine, settings, store, embedder)
-        agent_application.start(application)
-        yield
-        agent_application.stop(application)
-        store.close()
-        embedder.close()
-        engine.dispose()
-        logfire.force_flush(timeout_millis=2000)
+        try:
+            agent_application.start(application)
+            yield
+        finally:
+            agent_application.stop(application)
+            application.state.search.close()
+            store.close()
+            embedder.close()
+            engine.dispose()
+            logfire.force_flush(timeout_millis=2000)
 
     application = FastAPI(
         title="Collection Explorer API",

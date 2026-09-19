@@ -19,7 +19,18 @@ from app.models import (
 )
 from app.services.embeddings import SearchError, normalize
 from app.services.metadata import filter_rows
+from app.services.r2_catalogue import r2_object_url
 from app.services.selection import safe_path
+
+
+def image_values(settings, item):
+    values = {
+        key: item[key] for key in Image.model_fields if key in item and key != "r2_url"
+    }
+    values["filter_metadata"] = filter_rows(item["associations"])
+    if settings.r2_endpoint_url:
+        values["r2_url"] = r2_object_url(settings, item["relative_path"])
+    return values
 
 
 def create_generation(
@@ -52,17 +63,11 @@ def create_generation(
         scanned=report["scanned"],
         skipped=sum(report["skipped"].values()),
     )
-    snapshot = settings.data_dir / "selections" / f"{generation_id}.jsonl"
-    snapshot.parent.mkdir(parents=True, exist_ok=True)
-    snapshot.write_text(
-        "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in selected)
-    )
     with Session(engine, expire_on_commit=False) as session:
         session.add(generation)
         session.flush()
         for item in selected:
-            values = {key: item[key] for key in Image.model_fields if key in item}
-            values["filter_metadata"] = filter_rows(item["associations"])
+            values = image_values(settings, item)
             image = Image(generation_id=generation_id, **values)
             session.add(image)
             session.flush()
@@ -86,6 +91,7 @@ def create_generation(
                 )
             )
         session.commit()
+    save_selection(engine, settings, generation_id)
     return generation_id
 
 
@@ -101,11 +107,15 @@ def extend_generation(engine, settings, generation_id, selected):
         session.add(generation)
         for item in selected:
             image = session.get(Image, (generation_id, item["image_id"]))
-            values = {key: item[key] for key in Image.model_fields if key in item}
-            values["filter_metadata"] = filter_rows(item["associations"])
+            values = image_values(settings, item)
             if image is None:
                 image = Image(generation_id=generation_id, **values)
             else:
+                if any(
+                    values.get(key, getattr(image, key)) != getattr(image, key)
+                    for key in ("relative_path", "checksum")
+                ):
+                    image.r2_url = None
                 for key, value in values.items():
                     setattr(image, key, value)
             session.add(image)
@@ -195,6 +205,17 @@ def run_ingestion(
             .where(Image.generation_id == generation_id)
             .order_by(Image.image_id)
         ).all()
+        urls_changed = False
+        if settings.r2_endpoint_url:
+            for image in images:
+                url = r2_object_url(settings, image.relative_path)
+                if image.r2_url != url:
+                    image.r2_url = url
+                    session.add(image)
+                    urls_changed = True
+            if urls_changed:
+                session.commit()
+                save_selection(engine, settings, generation_id)
         if generation.status == "ready":
             vectors.verify(generation, images)
             return {

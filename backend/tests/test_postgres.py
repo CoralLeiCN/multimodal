@@ -14,7 +14,7 @@ def test_migrations_are_repeatable_and_keep_cache_local(setup):
     with engine.connect() as connection:
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-            == "0003"
+            == "0004"
         )
 
 

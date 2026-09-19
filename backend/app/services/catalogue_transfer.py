@@ -3,7 +3,7 @@
 import hashlib
 import json
 
-from sqlalchemy import func, select
+from sqlalchemy import func, inspect, literal, select
 
 from app.models import Association, Generation, Image, Ingestion, ServiceState
 
@@ -13,10 +13,23 @@ TABLES = tuple(
 )
 
 
+def catalogue_rows(connection, table):
+    columns = list(table.columns)
+    if table.name == "images" and "r2_url" not in {
+        column["name"] for column in inspect(connection).get_columns("images")
+    }:
+        # Historical schema-0003 SQLite catalogues predate R2 references.
+        columns = [
+            literal(None).label("r2_url") if column.name == "r2_url" else column
+            for column in columns
+        ]
+    return connection.execute(select(*columns).order_by(*table.primary_key)).mappings()
+
+
 def fingerprint(connection, table):
     digest = hashlib.sha256()
     count = 0
-    rows = connection.execute(select(table).order_by(*table.primary_key)).mappings()
+    rows = catalogue_rows(connection, table)
     for row in rows:
         digest.update(
             json.dumps(dict(row), sort_keys=True, ensure_ascii=False).encode()
@@ -41,7 +54,7 @@ def transfer_catalogue(source, destination):
                 "Destination catalogue is not empty; refusing to overwrite it."
             )
         for table in TABLES:
-            rows = source.execute(select(table)).mappings()
+            rows = catalogue_rows(source, table)
             for batch in rows.partitions(500):
                 target.execute(table.insert(), [dict(row) for row in batch])
             expected = fingerprint(source, table)
