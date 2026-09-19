@@ -39,6 +39,10 @@ mode. Dropdowns use `GET /api/v1/filters`; applying filters repeats the current
 search or refreshes the browse grid. Clearing filters keeps the current query.
 Date ranges match overlapping creation years. The detail panel displays source
 place and category labels alongside dates and attribution.
+Each supplied collection ID has buttons to copy it or open chat with that ID in
+the composer. The chat action closes the detail panel, replaces the draft, and
+focuses the composer without sending a message. Existing chat history is kept.
+Copy success or failure is announced in the detail panel.
 
 The left-edge Chat tab toggles a collection companion sidebar. Opening it makes
 room beside the collection, so users can browse, filter, and search images while

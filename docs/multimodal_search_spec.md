@@ -31,6 +31,9 @@ Support these actions:
 - Filter browsing and every search by creation year range, creation place, and category.
 - Open an image detail panel with its title, description, source identifiers,
   date, place, category, maker, and supplied licence and attribution information.
+- Copy a supplied collection ID from image details, or open chat with that ID
+  replacing the draft and focus in the composer. This closes image details and
+  keeps chat history without sending a message. Omit both actions for missing IDs.
 
 Return 24 results by default, with a maximum of 100 per search. Browse the sample
 in pages of 24 images. Use responsive cards, lazy image loading, labelled controls,

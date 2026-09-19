@@ -283,10 +283,11 @@ export function CollectionPage() {
   const displayError = error || collection.error?.message || health.error?.message
 
   const [chatSelection, setChatSelection] = useState<{ id: string; nonce: number }>()
+  const [chatRequest, setChatRequest] = useState<{ recordId: string }>()
 
   return (
     <div className="collection-workspace">
-      <ChatPanel selection={chatSelection} />
+      <ChatPanel selection={chatSelection} collectionRequest={chatRequest} />
       <div className="app-shell">
         <header className="site-header">
           <Link to="/create" className="header-link">
@@ -719,6 +720,7 @@ export function CollectionPage() {
           image={detail}
           onClose={() => setDetail(null)}
           onSimilar={findSimilar}
+          onChat={(recordId) => setChatRequest({ recordId })}
           canSearch={available}
         />
       </div>

@@ -19,7 +19,13 @@ const terminal = new Set(["succeeded", "failed", "cancelled", "timed_out"])
 const messageOf = (error: unknown) =>
   error instanceof Error ? error.message : "The request failed."
 
-export function ChatPanel({ selection }: { selection?: { id: string; nonce: number } }) {
+export function ChatPanel({
+  selection,
+  collectionRequest,
+}: {
+  selection?: { id: string; nonce: number }
+  collectionRequest?: { recordId: string }
+}) {
   const [open, setOpen] = useState(false)
   const [status, setStatus] = useState<Status | null>(null)
   const [brands, setBrands] = useState<Brand[]>([])
@@ -78,6 +84,14 @@ export function ChatPanel({ selection }: { selection?: { id: string; nonce: numb
     setSubject(undefined)
     input.current?.focus()
   }, [selection])
+
+  useEffect(() => {
+    if (!collectionRequest) return
+    setOpen(true)
+    setDraft(collectionRequest.recordId)
+    setSubject(undefined)
+    input.current?.focus({ preventScroll: true })
+  }, [collectionRequest])
 
   // Poll durable history, including after terminal status while the worker publishes its reply.
   useEffect(() => {

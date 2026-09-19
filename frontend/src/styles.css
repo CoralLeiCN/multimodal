@@ -738,6 +738,24 @@ footer p {
   margin: 0;
   overflow-wrap: anywhere;
 }
+.collection-id {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.collection-id-actions {
+  display: inline-flex;
+  gap: 2px;
+}
+.collection-id-actions .button {
+  padding: 6px;
+  min-width: 30px;
+  min-height: 30px;
+}
+.copy-status:empty {
+  display: none;
+}
 .credit {
   font-size: 10px;
   color: #8b927f;

@@ -116,6 +116,8 @@ The left-edge Chat tab toggles a companion sidebar alongside the collection,
 so users can browse images while chatting. The sidebar connects to brand-bound
 conversations, tracks generation tasks, and displays downloadable results. See
 the [frontend guide](frontend/README.md) for sign-in and configuration.
+Image details include buttons beside each collection ID to copy it or open chat
+with the ID filled in and ready to edit or send.
 Date preprocessing follows the [data processing rules](data_processing_spec.md),
 including treating `c.1993` as 1993 for filtering while preserving its display text.
 

@@ -20,6 +20,46 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/v1/images/*/file", (route) => route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="#c7bd9e"/></svg>' }))
 })
 
+test("copies collection IDs and reports clipboard failure", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"])
+  await page.goto("/")
+  await page.getByRole("button", { name: "View Brass microscope" }).click()
+  await page.getByRole("button", { name: "Copy collection ID co123" }).click()
+  await expect(page.getByRole("status")).toContainText("Copied co123")
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("co123")
+  await page.evaluate(() => {
+    navigator.clipboard.writeText = async () => { throw new Error("Clipboard unavailable") }
+  })
+  await page.getByRole("button", { name: "Copy collection ID co123" }).click()
+  await expect(page.getByRole("status")).toContainText("Couldn’t copy")
+})
+
+test("collection ID chat action focuses the draft and preserves existing history without sending", async ({ page }) => {
+  const mock = await mockChat(page)
+  await page.goto("/")
+  await page.getByRole("button", { name: "View Brass microscope" }).click()
+  await page.getByRole("button", { name: "Chat about collection ID co123" }).click()
+  const composer = page.getByLabel("Message the collection companion")
+  await expect(page.getByRole("dialog")).toHaveCount(0)
+  await expect(composer).toHaveValue("co123")
+  await expect(composer).toBeFocused()
+  expect(mock.sent).toHaveLength(0)
+  await expect(page.getByRole("button", { name: "Send message" })).toBeEnabled()
+  await page.getByRole("button", { name: "Send message" }).click()
+  await expect(page.getByRole("log")).toContainText("Here is your brand image.")
+  await page.getByRole("button", { name: "Edit this image", exact: true }).click()
+  await composer.fill("An existing draft")
+  await page.getByRole("button", { name: "View Brass microscope" }).click()
+  await page.getByRole("button", { name: "Chat about collection ID co123" }).click()
+  await expect(composer).toHaveValue("co123")
+  await expect(composer).toBeFocused()
+  await expect(page.getByRole("log")).toContainText("Here is your brand image.")
+  expect(mock.sent).toHaveLength(1)
+  await page.getByRole("button", { name: "Send message" }).click()
+  await expect.poll(() => mock.sent.length).toBe(2)
+  expect(mock.sent[1].subject_asset_id).toBeUndefined()
+})
+
 test("applies metadata filters to browsing and searches, validates years, and clears them", async ({ page }) => {
   const searches: Record<string, unknown>[] = []
   const browses: string[] = []

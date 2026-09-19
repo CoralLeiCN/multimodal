@@ -1,5 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog"
-import { ArrowUpRight, ScanSearch, X } from "lucide-react"
+import { ArrowUpRight, Copy, MessageCircle, ScanSearch, X } from "lucide-react"
+import { useRef, useState } from "react"
 import type { ImageRead } from "../client/api"
 import { Button } from "./ui/button"
 
@@ -17,13 +18,27 @@ export function ImageDetail({
   image,
   onClose,
   onSimilar,
+  onChat,
   canSearch,
 }: {
   image: ImageRead | null
   onClose: () => void
   onSimilar: (image: ImageRead) => void
+  onChat: (recordId: string) => void
   canSearch: boolean
 }) {
+  const pendingChat = useRef<string | null>(null)
+  const [copyStatus, setCopyStatus] = useState("")
+
+  async function copyId(recordId: string) {
+    try {
+      await navigator.clipboard.writeText(recordId)
+      setCopyStatus(`Copied ${recordId}`)
+    } catch {
+      setCopyStatus("Couldn’t copy. Select the collection ID and copy it manually.")
+    }
+  }
+
   return (
     <Dialog.Root
       open={Boolean(image)}
@@ -33,7 +48,18 @@ export function ImageDetail({
     >
       <Dialog.Portal>
         <Dialog.Overlay className="dialog-overlay" />
-        <Dialog.Content className="detail-dialog" aria-describedby="image-description">
+        <Dialog.Content
+          className="detail-dialog"
+          aria-describedby="image-description"
+          onCloseAutoFocus={(event) => {
+            setCopyStatus("")
+            if (pendingChat.current) {
+              event.preventDefault()
+              onChat(pendingChat.current)
+              pendingChat.current = null
+            }
+          }}
+        >
           {image && (
             <>
               <div className="detail-image">
@@ -54,7 +80,34 @@ export function ImageDetail({
                     <dl>
                       <div>
                         <dt>Collection ID</dt>
-                        <dd>{item.record_uid || "Not supplied"}</dd>
+                        <dd className="collection-id">
+                          <span>{item.record_uid || "Not supplied"}</span>
+                          {item.record_uid && (
+                            <span className="collection-id-actions">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                aria-label={`Copy collection ID ${item.record_uid}`}
+                                title="Copy collection ID"
+                                onClick={() => void copyId(item.record_uid)}
+                              >
+                                <Copy size={15} aria-hidden="true" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                aria-label={`Chat about collection ID ${item.record_uid}`}
+                                title="Use collection ID in chat"
+                                onClick={() => {
+                                  pendingChat.current = item.record_uid
+                                  onClose()
+                                }}
+                              >
+                                <MessageCircle size={15} aria-hidden="true" />
+                              </Button>
+                            </span>
+                          )}
+                        </dd>
                       </div>
                       <div>
                         <dt>Date</dt>
@@ -100,6 +153,9 @@ export function ImageDetail({
                     </a>
                   </section>
                 ))}
+                <p className="copy-status" role="status">
+                  {copyStatus}
+                </p>
               </div>
             </>
           )}
