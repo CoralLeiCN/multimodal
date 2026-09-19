@@ -62,6 +62,7 @@ the Compose services.
 | Local database | SQLite, SQLModel, Alembic | Catalogue, ingestion status, retries, checkpoints, and schema migrations. |
 | Vector database | Qdrant and `qdrant-client` | Persistent image vectors and cosine similarity queries. |
 | Embeddings | Gemini Embedding 2 and `google-genai` | Image and text embeddings in a shared space. |
+| Tracing | Pydantic Logfire and the `logfire[fastapi]` Python SDK | Trace API requests, AI calls, ingestion, and database operations. |
 | Image validation | Pillow | Decode files and validate formats and dimensions. |
 | Local services | Docker Compose | Run Qdrant and the application with persistent local storage. |
 | Dependency management | uv and Bun | Python workspace and frontend dependencies with committed lockfiles. |
@@ -539,6 +540,32 @@ work when Gemini is unavailable. Qdrant failure makes vector search unavailable
 while browsing remains usable. Search failure must be shown as an error. Serve
 files only through catalogue IDs with paths constrained to configured image roots.
 
+## Tracing
+
+Use [Pydantic Logfire](https://pydantic.dev/docs/logfire/get-started/) for tracing
+the Python backend and AI workflows. Configure it once in each process using the
+service names `multimodal-api` and `multimodal-indexer`.
+
+Trace search requests and indexing runs, with child spans for Gemini embedding
+calls, Qdrant operations, and SQLite lookups. Record duration, model, embedding
+dimensions, retries, and success or failure. Include run and image identifiers
+where relevant so operators can investigate slow requests and failed ingestion.
+Keep credentials, request arguments, query-string values, headers, image bytes,
+embedding vectors, and raw exception messages out of traces. Record error types
+and safe application error codes to identify failures.
+
+The backend declares `logfire[fastapi]`. The API loads `LOGFIRE_TOKEN` from backend
+settings or uses the ignored `.logfire/` project credentials. Indexing loads
+`LOGFIRE_INDEXER_TOKEN` or uses `.logfire/indexer/` credentials for its own project.
+Shared SDK destination variables cannot override the indexing project, and
+indexing does not fall back to API credentials. `LOGFIRE_SEND_TO_LOGFIRE`
+defaults to `if-token-present`; `false` disables cloud export.
+`LOGFIRE_ENVIRONMENT` defaults to `development`. Flush pending telemetry on API
+shutdown and indexing exit. Python tests and OpenAPI export disable cloud export.
+Validate that child spans separate provider latency from database latency and
+that captured telemetry excludes request content and raw provider errors. See
+[the tracing setup guide](../backend/README.md#logfire-tracing).
+
 ## Configuration and operation
 
 Follow [the Gemini API setup specification](gemini_api_spec.md) for credentials.
@@ -608,7 +635,8 @@ clearly. Dry runs and preparation make zero embedding calls or Qdrant writes.
 ## Implementation and validation
 
 Implement the template layout above. Add FastAPI, Uvicorn, Pydantic,
-`pydantic-settings`, SQLModel, Alembic, `qdrant-client`, `google-genai`, Pillow,
+`pydantic-settings`, SQLModel, Alembic, `qdrant-client`, `google-genai`,
+`logfire[fastapi]`, Pillow,
 and multipart upload support to the backend dependencies. Lock React, TypeScript,
 Vite, and the selected template frontend packages with Bun.
 

@@ -1,6 +1,7 @@
 import math
 
 import httpx
+import logfire
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError
@@ -37,6 +38,21 @@ class GeminiEmbeddings:
             self.client.close()
 
     def embed(
+        self,
+        *,
+        text: str | None = None,
+        image: bytes | None = None,
+        mime_type: str = "image/jpeg",
+    ) -> list[float]:
+        with logfire.span(
+            "gemini.embed",
+            model=self.settings.embedding_model,
+            dimensions=self.settings.embedding_dimensions,
+            input_kind="image" if image is not None else "text",
+        ):
+            return self._embed(text=text, image=image, mime_type=mime_type)
+
+    def _embed(
         self,
         *,
         text: str | None = None,

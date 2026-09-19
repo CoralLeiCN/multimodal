@@ -111,6 +111,16 @@ This confirms access to the listing endpoint. Access to a chosen model and its
 quota must be checked when implementing the operation that uses it.
 [Source: SDK model listing](https://googleapis.github.io/python-genai/#list-base-models).
 
+## Tracing
+
+Use Pydantic Logfire's `logfire` Python SDK to trace Gemini embedding calls in
+search and indexing workflows. Record model, duration, retry attempts, and outcome
+under the parent request or indexing trace. Follow the
+[service tracing requirements](multimodal_search_spec.md#tracing), including
+the exclusions for credentials and request content. The backend wraps embedding
+calls in `gemini.embed` spans. See [Logfire configuration](../backend/README.md#logfire-tracing)
+for local project credentials, cloud export, and environment labels.
+
 ## Acceptance criteria
 
 - The locked environment imports `genai` from `google` successfully.

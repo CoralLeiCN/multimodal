@@ -52,6 +52,12 @@ Exit `0` indicates success and `2` indicates an invalid or failed run.
 
 See [the backend guide](../backend/README.md) for API and configuration details.
 
+Indexing uses [Logfire tracing](../backend/README.md#logfire-tracing) under the
+`multimodal-indexer` service. It records run and image attempt spans, retries,
+and completion counts, and flushes telemetry before exiting. Cloud export uses
+`.logfire/indexer/` credentials or `LOGFIRE_INDEXER_TOKEN` for its own project; set
+`LOGFIRE_SEND_TO_LOGFIRE=false` to disable it.
+
 ## Permanent collection
 
 Set `QDRANT_COLLECTION_NAME=smg_images` in `.env` to keep one collection across

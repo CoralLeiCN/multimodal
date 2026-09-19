@@ -78,6 +78,11 @@ Creation year, creation place, and category filters apply to browsing, text,
 image, and similar-image searches. Qdrant indexes these metadata fields and
 SQLite retains their source labels and date ranges.
 
+Pydantic Logfire traces API requests, Gemini embedding calls, indexing, and
+database operations. Cloud export uses separate local project credentials for
+the API and indexing, or `LOGFIRE_TOKEN` and `LOGFIRE_INDEXER_TOKEN` in `.env`.
+See [tracing setup](backend/README.md#logfire-tracing).
+
 The indexing command reads a bounded portion of the bronze metadata and sends
 only selected image bytes to Gemini. It saves checkpoints so completed embeddings
 can be reused. See [the indexing commands](cronjob/README.md#sample-and-index-images)

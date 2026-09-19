@@ -1,3 +1,4 @@
+import logfire
 from qdrant_client import QdrantClient, models
 
 from app.core.config import Settings
@@ -18,6 +19,7 @@ class VectorStore:
             else None,
         )
 
+    @logfire.instrument("qdrant.ensure_collection", extract_args=False)
     def ensure_collection(self, generation: Generation):
         if not self.client.collection_exists(generation.collection):
             self.client.create_collection(
@@ -97,6 +99,7 @@ class VectorStore:
             return False
         return True
 
+    @logfire.instrument("qdrant.upsert", extract_args=False)
     def upsert(self, generation: Generation, image: Image, vector: list[float]):
         result = self.client.upsert(
             generation.collection,
@@ -116,6 +119,7 @@ class VectorStore:
                 "Qdrant did not confirm the image write.", "vector_write_failed"
             )
 
+    @logfire.instrument("qdrant.search", extract_args=False)
     def search(
         self,
         generation: Generation,
@@ -136,6 +140,7 @@ class VectorStore:
         )
         return sorted(response.points, key=lambda point: (-point.score, str(point.id)))
 
+    @logfire.instrument("qdrant.vector", extract_args=False)
     def vector(self, generation: Generation, image_id: str) -> list[float]:
         points = self.client.retrieve(
             generation.collection, [image_id], with_vectors=True
@@ -146,6 +151,7 @@ class VectorStore:
             )
         return normalize(points[0].vector, generation.dimensions)
 
+    @logfire.instrument("qdrant.verify", extract_args=False)
     def verify(self, generation: Generation, images: list[Image]) -> None:
         self.check_collection(generation)
         if self.client.count(generation.collection, exact=True).count != len(images):

@@ -131,6 +131,43 @@ TEST_QDRANT_URL=http://127.0.0.1:6333 uv run pytest backend/tests/test_qdrant_se
 
 This test creates and deletes its own temporary collection with synthetic vectors.
 
+## Logfire tracing
+
+Pydantic Logfire records API requests and child spans for search, Gemini
+embeddings, Qdrant operations, and SQLite result lookups. Indexing records runs,
+image attempts, retries, and completion counts. The services are named
+`multimodal-api` and `multimodal-indexer`.
+
+The API and indexing pipeline have separate Logfire destinations. The API uses
+`LOGFIRE_TOKEN` from the ignored root `.env`, or the credentials saved by setup in
+`.logfire/logfire_credentials.json`. Indexing uses `LOGFIRE_INDEXER_TOKEN` or
+`.logfire/indexer/logfire_credentials.json`. Save a separate project's credentials
+with the setup CLI's `--data-dir .logfire/indexer` option to connect indexing.
+The whole `.logfire/` directory is ignored by Git. Keep each project's region
+consistent when setting up credentials. See
+[Logfire setup](https://pydantic.dev/docs/logfire/get-started/).
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `LOGFIRE_TOKEN` | Unset | API project write token; `.logfire/` credentials are used when omitted. |
+| `LOGFIRE_INDEXER_TOKEN` | Unset | Indexing project write token; `.logfire/indexer/` credentials are used when omitted. |
+| `LOGFIRE_SEND_TO_LOGFIRE` | `if-token-present` | Export when credentials are available; set `false` to disable cloud export. |
+| `LOGFIRE_ENVIRONMENT` | `development` | Label the environment in Logfire. |
+
+Indexing ignores the shared SDK destination variables `LOGFIRE_TOKEN`,
+`LOGFIRE_API_KEY`, and `LOGFIRE_BASE_URL` during tracing configuration so an API
+connection cannot override its own project. It does not fall back to API credentials.
+
+Restart the API after configuring credentials. Run a request and check the
+project's Live view for `multimodal-api`. Indexing flushes pending telemetry before
+exit. The Python tests and OpenAPI export disable cloud telemetry.
+
+Traces include operation names, durations, embedding model and dimensions, run
+and image identifiers, attempt numbers, and error types or safe application error
+codes. Request arguments, query-string values, headers, image bytes, embedding
+vectors, and raw exception messages are excluded. Application events use
+structured Logfire logs.
+
 ## Permanent collection setting
 
 `QDRANT_COLLECTION_NAME` selects a permanent collection for ingestion. Omit it

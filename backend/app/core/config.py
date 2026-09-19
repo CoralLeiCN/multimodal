@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -10,6 +11,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
 
     gemini_api_key: SecretStr | None = None
+    logfire_token: SecretStr | None = None
+    logfire_indexer_token: SecretStr | None = None
+    logfire_send_to_logfire: bool | Literal["if-token-present"] = "if-token-present"
+    logfire_environment: str = "development"
     embedding_model: str = "gemini-embedding-2"
     embedding_dimensions: int = 1536
     qdrant_url: str = "http://127.0.0.1:6333"

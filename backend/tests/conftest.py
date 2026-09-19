@@ -1,5 +1,6 @@
 import hashlib
 import io
+import os
 from uuid import NAMESPACE_URL, uuid5
 
 import pytest
@@ -10,6 +11,9 @@ from app.services.ingestion import create_generation
 from app.services.qdrant_store import VectorStore
 from PIL import Image as PillowImage
 from qdrant_client import QdrantClient
+
+# Set before test modules import app.main, even on a configured developer machine.
+os.environ["LOGFIRE_SEND_TO_LOGFIRE"] = "false"
 
 
 class FakeEmbeddings:

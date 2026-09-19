@@ -180,3 +180,13 @@ catalogue. Subsequent exports copy the catalogue without filtering its rows.
 See the
 [export and restore guide](catalogue/README.md); the corresponding Qdrant
 collection and local thumbnails are required to use a restored index.
+
+## Operational tracing
+
+When Logfire credentials are configured, the backend and indexing process send
+operation metadata to their separately configured Logfire projects: durations,
+model and dimensions, run and image identifiers, attempt numbers, counts, and
+error types or safe error codes. Traces exclude request arguments, query-string values, headers, image
+bytes, embedding vectors, and raw exception messages. See
+[tracing configuration](backend/README.md#logfire-tracing) to enable or disable
+cloud export.

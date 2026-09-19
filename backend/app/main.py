@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 
+import logfire
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -8,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.main import api_router
 from app.core.config import ROOT, Settings
 from app.core.db import make_engine, migrate
+from app.core.telemetry import configure_telemetry, instrument_api
 from app.services.embeddings import GeminiEmbeddings, SearchError
 from app.services.qdrant_store import VectorStore
 from app.services.search import SearchService
@@ -15,6 +17,7 @@ from app.services.search import SearchService
 
 def create_app(settings=None, *, vectors=None, embeddings=None):
     settings = settings or Settings()
+    configure_telemetry(settings, "multimodal-api")
 
     @asynccontextmanager
     async def lifespan(application):
@@ -27,6 +30,7 @@ def create_app(settings=None, *, vectors=None, embeddings=None):
         store.close()
         embedder.close()
         engine.dispose()
+        logfire.force_flush(timeout_millis=2000)
 
     application = FastAPI(
         title="Collection Explorer API",
@@ -38,6 +42,9 @@ def create_app(settings=None, *, vectors=None, embeddings=None):
 
     @application.exception_handler(SearchError)
     async def search_error(_request: Request, error: SearchError):
+        logfire.warn(
+            "Search request failed", error_code=error.code, status=error.status
+        )
         return JSONResponse(
             status_code=error.status,
             content={"code": error.code, "message": str(error)},
@@ -54,6 +61,7 @@ def create_app(settings=None, *, vectors=None, embeddings=None):
         )
 
     application.include_router(api_router, prefix="/api/v1")
+    instrument_api(application)
     frontend = ROOT / "frontend/dist"
     if frontend.is_dir():
         application.mount(

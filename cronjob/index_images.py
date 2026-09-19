@@ -7,8 +7,10 @@ import json
 import sys
 from pathlib import Path
 
+import logfire
 from app.core.config import ROOT, Settings
 from app.core.db import make_engine, migrate
+from app.core.telemetry import configure_telemetry
 from app.services.embeddings import GeminiEmbeddings, SearchError
 from app.services.ingestion import create_generation, run_ingestion
 from app.services.qdrant_store import VectorStore
@@ -44,6 +46,7 @@ def main(argv=None):
     if not 1 <= args.limit <= 1000 or not 1 <= args.scan_limit <= 10000:
         parser.error("limit must be 1–1000 and scan-limit must be 1–10000")
     settings = Settings()
+    configure_telemetry(settings, "multimodal-indexer", indexing=True)
     embeddings = GeminiEmbeddings(settings)
     vectors = None
     generation_id = args.resume
@@ -111,6 +114,7 @@ def main(argv=None):
         embeddings.close()
         if vectors:
             vectors.close()
+        logfire.force_flush(timeout_millis=2000)
 
 
 if __name__ == "__main__":

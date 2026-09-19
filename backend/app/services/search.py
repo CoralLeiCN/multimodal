@@ -5,6 +5,7 @@ import threading
 from contextlib import contextmanager
 from time import perf_counter
 
+import logfire
 from sqlalchemy import func
 from sqlmodel import Session, select
 
@@ -108,6 +109,7 @@ class SearchService:
             message="Your collection is ready to explore.",
         )
 
+    @logfire.instrument("sqlite.read_images", extract_args=False)
     def read_images(
         self, generation: Generation, ids: list[str]
     ) -> dict[str, ImageRead]:
@@ -175,6 +177,7 @@ class SearchService:
             )
         return safe_path(self.settings, image.relative_path), image.mime_type
 
+    @logfire.instrument("sqlite.filter_options", extract_args=False)
     def filter_options(self) -> FilterOptions:
         generation = self.generation()
         with Session(self.engine) as session:
@@ -192,6 +195,7 @@ class SearchService:
             date_max=max((item["date_to"] for item in ranges), default=None),
         )
 
+    @logfire.instrument("sqlite.browse", extract_args=False)
     def browse(
         self,
         limit: int,
@@ -277,6 +281,7 @@ class SearchService:
         finally:
             self._slots.release()
 
+    @logfire.instrument("search", extract_args=False)
     def search(
         self,
         *,

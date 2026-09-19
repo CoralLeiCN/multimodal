@@ -3,6 +3,7 @@ import json
 import time
 from uuid import uuid4
 
+import logfire
 from sqlmodel import Session, select
 
 from app.core.config import Settings
@@ -177,6 +178,7 @@ def save_selection(engine, settings, generation_id):
     temporary.replace(path)
 
 
+@logfire.instrument("index.run", extract_args=["generation_id"])
 def run_ingestion(
     engine, settings: Settings, generation_id: str, embeddings, vectors, progress=print
 ) -> dict:
@@ -234,71 +236,84 @@ def run_ingestion(
                     continue
             for attempt in range(3):
                 try:
-                    with Session(cache_engine) as cache_session:
-                        cache = cache_session.get(EmbeddingCache, cache_key)
-                    with Session(engine, expire_on_commit=False) as session:
-                        tracking = session.get(
-                            Ingestion, (generation_id, image.image_id)
-                        )
-                        tracking.attempts += 1
-                        tracking.status = "embedded" if cache else "embedding"
-                        tracking.updated_at = now()
-                        session.add(tracking)
-                        session.commit()
-                    if cache:
-                        vector = normalize(cache.vector, generation.dimensions)
-                    else:
-                        path = safe_path(settings, image.relative_path)
-                        with path.open("rb") as stream:
-                            data = stream.read(settings.max_image_bytes + 1)
-                        if hashlib.sha256(data).hexdigest() != image.checksum:
-                            raise SearchError(
-                                "A selected image changed since sampling.",
-                                "source_changed",
-                            )
-                        vector = normalize(
-                            embeddings.embed(image=data, mime_type=image.mime_type),
-                            generation.dimensions,
-                        )
+                    with logfire.span(
+                        "index.image",
+                        run_id=generation_id,
+                        image_id=image.image_id,
+                        attempt=attempt + 1,
+                    ):
                         with Session(cache_engine) as cache_session:
-                            cache_session.add(
-                                EmbeddingCache(
-                                    key=cache_key,
-                                    checksum=image.checksum,
-                                    config_hash=generation.config_hash,
-                                    vector=vector,
-                                )
-                            )
-                            cache_session.commit()
+                            cache = cache_session.get(EmbeddingCache, cache_key)
                         with Session(engine, expire_on_commit=False) as session:
                             tracking = session.get(
                                 Ingestion, (generation_id, image.image_id)
                             )
-                            tracking.status, tracking.updated_at = "embedded", now()
+                            tracking.attempts += 1
+                            tracking.status = "embedded" if cache else "embedding"
+                            tracking.updated_at = now()
                             session.add(tracking)
                             session.commit()
-                        embedded += 1
-                    with Session(engine, expire_on_commit=False) as session:
-                        tracking = session.get(
-                            Ingestion, (generation_id, image.image_id)
-                        )
-                        tracking.status, tracking.updated_at = "upserting", now()
-                        session.add(tracking)
-                        session.commit()
-                    vectors.upsert(generation, image, vector)
-                    with Session(engine, expire_on_commit=False) as session:
-                        tracking = session.get(
-                            Ingestion, (generation_id, image.image_id)
-                        )
-                        tracking.status, tracking.indexed_at = "indexed", now()
-                        tracking.updated_at, tracking.last_error = now(), None
-                        session.add(tracking)
-                        session.commit()
-                    if cache:
-                        reused += 1
-                    progress(f"[{position}/{len(images)}] indexed {image.title}")
-                    break
+                        if cache:
+                            vector = normalize(cache.vector, generation.dimensions)
+                        else:
+                            path = safe_path(settings, image.relative_path)
+                            with path.open("rb") as stream:
+                                data = stream.read(settings.max_image_bytes + 1)
+                            if hashlib.sha256(data).hexdigest() != image.checksum:
+                                raise SearchError(
+                                    "A selected image changed since sampling.",
+                                    "source_changed",
+                                )
+                            vector = normalize(
+                                embeddings.embed(image=data, mime_type=image.mime_type),
+                                generation.dimensions,
+                            )
+                            with Session(cache_engine) as cache_session:
+                                cache_session.add(
+                                    EmbeddingCache(
+                                        key=cache_key,
+                                        checksum=image.checksum,
+                                        config_hash=generation.config_hash,
+                                        vector=vector,
+                                    )
+                                )
+                                cache_session.commit()
+                            with Session(engine, expire_on_commit=False) as session:
+                                tracking = session.get(
+                                    Ingestion, (generation_id, image.image_id)
+                                )
+                                tracking.status, tracking.updated_at = "embedded", now()
+                                session.add(tracking)
+                                session.commit()
+                            embedded += 1
+                        with Session(engine, expire_on_commit=False) as session:
+                            tracking = session.get(
+                                Ingestion, (generation_id, image.image_id)
+                            )
+                            tracking.status, tracking.updated_at = "upserting", now()
+                            session.add(tracking)
+                            session.commit()
+                        vectors.upsert(generation, image, vector)
+                        with Session(engine, expire_on_commit=False) as session:
+                            tracking = session.get(
+                                Ingestion, (generation_id, image.image_id)
+                            )
+                            tracking.status, tracking.indexed_at = "indexed", now()
+                            tracking.updated_at, tracking.last_error = now(), None
+                            session.add(tracking)
+                            session.commit()
+                        if cache:
+                            reused += 1
+                        progress(f"[{position}/{len(images)}] indexed {image.title}")
+                        break
                 except Exception as error:
+                    logfire.warn(
+                        "Image ingestion attempt failed",
+                        run_id=generation_id,
+                        image_id=image.image_id,
+                        attempt=attempt + 1,
+                        error_type=type(error).__name__,
+                    )
                     message = (
                         str(error)
                         if isinstance(error, (SearchError, ValueError))
@@ -345,6 +360,7 @@ def run_ingestion(
             session.add(generation)
             session.add(state)
             session.commit()
+        logfire.info("Indexing completed", **report)
         return report
     except BaseException as error:
         with Session(engine, expire_on_commit=False) as session:
