@@ -4,19 +4,27 @@
 It lets collaborators use the existing Qdrant collection with their own local
 image files, without repeating embedding requests.
 
-The backup passed SQLite's integrity check. It is about 7.5 MB compressed and
-18.8 MB restored. Its active index contains **50 images**:
+The snapshot passed SQLite's integrity check and was verified against Qdrant
+Cloud. It is about 237 KB compressed and 836 KB restored. Its active index
+contains **452 images**:
 
 | Setting | Value |
 | --- | --- |
-| Index version | `16153c4c64da4e49` |
-| Qdrant collection | `smg_images_16153c4c64da4e49` |
+| Index version | `d7af4d4835314fe0` |
+| Qdrant collection | `smg_images_d7af4d4835314fe0` |
 | Embedding model | `gemini-embedding-2` |
 | Embedding dimensions | `1536` |
 
-The snapshot also retains older indexing history, two failed 500-image runs,
-and cached embeddings. Those failed runs are not the active collection.
-The matching cloud collection's availability was not checked during export.
+The original catalogue pointed to an older collection that no longer exists.
+This snapshot recovers the 452 images already present in the remaining cloud
+collection from an interrupted 500-image run. All retained vectors and payloads
+were verified before marking this snapshot ready. The other 48 selected images
+had no cloud vectors and are excluded. No embeddings were generated and no
+cloud data was changed during recovery.
+
+Older runs and cached embeddings are omitted. Search uses the vectors in
+Qdrant Cloud and does not need a local embedding cache. The original local
+catalogue was preserved.
 
 ## Restore
 
@@ -34,7 +42,7 @@ database if one does not exist.
 Set these values in your own `.env`:
 
 ```dotenv
-QDRANT_COLLECTION_NAME=smg_images_16153c4c64da4e49
+QDRANT_COLLECTION_NAME=smg_images_d7af4d4835314fe0
 EMBEDDING_MODEL=gemini-embedding-2
 EMBEDDING_DIMENSIONS=1536
 SQLITE_PATH=data/search/catalog.sqlite3
@@ -57,5 +65,5 @@ subject to the source terms documented in [the data specification](../data_spec.
 SHA-256 of the restored SQLite file:
 
 ```text
-0955e029b48641d2441284a7cfd11a6922fba60e42200446467ef19301216c9f
+ca7bb7834fe96e27d4a02f38408e302a8bbfc3fd180a6952a2b207c9b54d1485
 ```

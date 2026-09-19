@@ -6,7 +6,7 @@ See [the user features](docs/user_features.md) for what we want to build.
 
 ## Run locally
 
-To reuse the shared 50-image Qdrant Cloud index, follow the
+To reuse the shared 452-image Qdrant Cloud index, follow the
 [catalogue restore guide](catalogue/README.md). It includes the SQLite snapshot
 and replaces the preview/index steps below; local images and access to the
 matching cloud collection are still required.
