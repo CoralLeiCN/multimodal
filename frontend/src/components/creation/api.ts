@@ -44,10 +44,20 @@ export type Status = {
 }
 export type RunEvent = { sequence: number; kind: string; summary: string }
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message)
+  }
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api/v1/agent${path}`, { credentials: "same-origin", ...init })
   const body = await response.json()
-  if (!response.ok) throw new Error(body.message || "The request could not be completed.")
+  if (!response.ok)
+    throw new ApiError(body.message || "The request could not be completed.", response.status)
   return body as T
 }
 export function post<T>(path: string, body: unknown, headers: Record<string, string> = {}) {

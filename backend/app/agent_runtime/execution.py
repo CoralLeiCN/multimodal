@@ -12,10 +12,25 @@ def run_execution(client, manifest):
                 client.tool("source", "execution_image")
         except httpx.HTTPStatusError as error:
             if error.response.status_code in {404, 409, 413, 422, 503}:
+                code, message = (
+                    "source_unavailable",
+                    "The source image could not be loaded.",
+                )
+                try:
+                    detail = error.response.json()
+                    if detail.get("code") in {
+                        "collection_unavailable",
+                        "collection_record_missing",
+                        "collection_record_ambiguous",
+                    }:
+                        code = detail["code"]
+                        message = str(detail.get("message", message))[:4000]
+                except ValueError:
+                    pass
                 client.tool(
                     "lookup_failure",
                     "execution_finish",
-                    {"error_code": "source_unavailable"},
+                    {"error_code": code, "source_message": message},
                 )
                 return
             raise

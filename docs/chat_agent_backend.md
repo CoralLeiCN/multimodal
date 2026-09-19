@@ -4,7 +4,7 @@ English | [简体中文](chat_agent_backend.CN.md)
 
 This backend implements the product flow: save a company brand, open a conversation,
 search the collection, and send “Use image ID X in our company style.” Subsequent
-messages can ask for changes to the previous result. Frontend chat design is deferred.
+messages can ask for changes to the previous result. The collection sidebar now connects to these APIs.
 This document supersedes the single-request product flow in the original image-agent design.
 
 ## Chat service and sandbox executor
@@ -227,3 +227,32 @@ that catalogue from the agent. `AGENT_COLLECTION_DATABASE` reads a legacy local
 SQLite snapshot only; it does not connect directly to Neon. Without either an
 available snapshot or the API configuration, collection-ID generation returns
 `collection_unavailable`. Uploaded-asset generation remains independent of search.
+
+
+## Connected collection sidebar
+
+Open Chat on the collection page, sign in, and select a saved brand. **Use in chat**
+on a search card inserts its exact `image_id` into a draft. Sending creates a
+conversation as needed and submits an idempotent turn. Polling retrieves durable
+messages and generated assets every two seconds while the sidebar is open. The
+Conversation selector restores prior chats after reload. Results can be downloaded
+or selected as `subject_asset_id` for a follow-up edit. Task errors and cancellation
+remain visible in history; retrying a lost HTTP submission reuses its original key.
+Brand configuration and reference uploads remain available in Image Studio.
+
+
+Planning and evaluation use GenerateContent's JSON Schema field for strict
+Pydantic contracts. Restart the API and worker after updating backend code;
+already-running processes retain their previously imported provider adapter.
+
+
+The chat executor accepts `co` collection record IDs as well as image UUIDs.
+For a record ID, the trusted gateway queries `DATABASE_URL` using an exact bound
+`record_uid` match in a read-only, repeatable-read transaction. All distinct images
+from the active ready generation are returned. A single match is resolved to its
+UUID before loading from the configured collection API or local image root.
+Multiple matches are returned to chat for selection; the agent does not choose an
+arbitrary image. Missing records and unavailable catalogues have separate errors.
+Imported assets retain `requested_record_uid`, the resolved image UUID, and attribution.
+The gateway process needs the catalogue connection even when image bytes use the
+online API. Restart the API and worker after updating this code.

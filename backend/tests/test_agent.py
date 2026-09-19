@@ -612,3 +612,66 @@ def test_agent_instruments_genai_without_reconfiguring_search_tracing(monkeypatc
     assert (
         os.environ["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] == "NO_CONTENT"
     )
+
+
+@pytest.mark.parametrize("operation", ["plan", "evaluate"])
+def test_structured_provider_uses_json_schema_wire_format(operation):
+    import json
+
+    import httpx
+    from app.services.agent.provider import GeminiProvider
+    from google import genai
+    from google.genai import types
+
+    output = (
+        {"summary": "Ready", "prompt": "Blue object", "reference_asset_ids": []}
+        if operation == "plan"
+        else {
+            "subject_score": 90,
+            "brand_score": 90,
+            "request_score": 90,
+            "summary": "Matches the request",
+            "action": "accept",
+        }
+    )
+    requests = []
+
+    def handle(request):
+        body = json.loads(request.content)
+        config = body["generationConfig"]
+        assert "responseSchema" not in config
+        assert config["responseJsonSchema"]["additionalProperties"] is False
+        assert "additional_properties" not in request.content.decode()
+        requests.append(body)
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "content": {
+                            "role": "model",
+                            "parts": [{"text": json.dumps(output)}],
+                        }
+                    }
+                ]
+            },
+        )
+
+    provider = GeminiProvider(AgentSettings(_env_file=None, gemini_api_key="test"))
+    provider.close()
+    provider.client = genai.Client(
+        api_key="test",
+        http_options=types.HttpOptions(
+            client_args={"transport": httpx.MockTransport(handle)},
+            retry_options=types.HttpRetryOptions(attempts=1),
+        ),
+    )
+    try:
+        if operation == "plan":
+            result, _ = provider.plan({}, {}, [], [])
+        else:
+            result, _ = provider.evaluate({}, {}, [])
+        assert result["summary"] == output["summary"]
+        assert len(requests) == 1
+    finally:
+        provider.close()

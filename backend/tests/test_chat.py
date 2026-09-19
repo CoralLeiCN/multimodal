@@ -648,3 +648,101 @@ def test_online_source_does_not_escape_path_or_accept_large_payload(agent, monke
     with pytest.raises(AgentError) as error:
         read_collection_image(svc.settings, "one")
     assert error.value.code == "image_too_large"
+
+
+def test_collection_record_lookup_returns_distinct_scoped_matches(agent, collection):
+    from app.models import Association, Generation, Image
+    from app.services.agent.collection import resolve_record_images
+    from sqlalchemy import create_engine
+
+    engine = create_engine(f"sqlite:///{agent[0].settings.collection_database}")
+    with Session(engine) as db:
+        row = db.get(Association, "association-red")
+        row.record_uid = "co41679"
+        db.add(
+            Association(
+                id="duplicate",
+                generation_id="fixture",
+                image_id=collection,
+                record_uid="co41679",
+                source_json="duplicate.json",
+            )
+        )
+        db.add(
+            Generation(
+                id="old",
+                collection="old",
+                status="ready",
+                model="test",
+                dimensions=3,
+                config_hash="test",
+            )
+        )
+        db.add(
+            Image(
+                generation_id="old",
+                image_id="old-image",
+                location="old.png",
+                relative_path="old.png",
+                checksum="old",
+                mime_type="image/png",
+                width=1,
+                height=1,
+                title="old",
+            )
+        )
+        db.add(
+            Association(
+                id="old-association",
+                generation_id="old",
+                image_id="old-image",
+                record_uid="co41679",
+                source_json="old.json",
+            )
+        )
+        db.commit()
+    rows = resolve_record_images("co41679", engine)
+    assert [r["image_id"] for r in rows] == [collection]
+    assert rows[0]["associations"][0]["licence"] == "CC BY-NC-SA 4.0"
+    assert resolve_record_images("co41679' OR 1=1 --", engine) == []
+    with Session(engine) as db:
+        from app.models import Generation
+
+        db.get(Generation, "fixture").status = "building"
+        db.commit()
+    with pytest.raises(AgentError) as error:
+        resolve_record_images("co41679", engine)
+    assert error.value.code == "collection_unavailable"
+    engine.dispose()
+
+
+def test_record_resolves_to_uuid_before_online_fetch(agent, monkeypatch):
+    import app.services.agent.collection as lookup
+
+    svc = agent[0]
+    svc.settings.collection_api_url = "https://collection.example"
+    matches = [{"image_id": "resolved-uuid", "title": "Boat"}]
+    monkeypatch.setattr(lookup, "resolve_record_images", lambda record: matches)
+    seen = []
+
+    def online(settings, image_id):
+        seen.append(image_id)
+        return picture(), {"image_id": image_id, "associations": []}
+
+    monkeypatch.setattr(lookup, "read_online_image", online)
+    data, source = lookup.read_collection_image(svc.settings, "co41679")
+    assert data == picture()
+    assert seen == ["resolved-uuid"]
+    assert source["requested_record_uid"] == "co41679"
+    matches.append({"image_id": "another-uuid", "title": "Another angle"})
+    with pytest.raises(AgentError) as error:
+        lookup.read_collection_image(svc.settings, "co41679")
+    assert error.value.code == "collection_record_ambiguous"
+    assert (
+        "resolved-uuid" in error.value.message and "another-uuid" in error.value.message
+    )
+    matches.clear()
+    with pytest.raises(AgentError) as error:
+        lookup.read_collection_image(svc.settings, "co41679")
+    assert error.value.code == "collection_record_missing"
+    assert seen == ["resolved-uuid"]

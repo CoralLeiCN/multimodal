@@ -6,11 +6,13 @@ export function ImageCard({
   image,
   onOpen,
   onSimilar,
+  onChat,
   canSearch,
 }: {
   image: ImageRead
   onOpen: (image: ImageRead) => void
   onSimilar: (image: ImageRead) => void
+  onChat: (image: ImageRead) => void
   canSearch: boolean
 }) {
   const [failed, setFailed] = useState(false)
@@ -45,6 +47,14 @@ export function ImageCard({
           <span className="card-date">{association?.date || "FROM THE COLLECTION"}</span>
           <h3>{image.title}</h3>
         </div>
+      </button>
+      <button
+        type="button"
+        className="image-chat-link"
+        onClick={() => onChat(image)}
+        aria-label={`Use ${image.title} in chat`}
+      >
+        Use in chat
       </button>
       <div className="card-bottom">
         <span title={association?.licence}>

@@ -101,8 +101,9 @@ Creation year, creation place, and category filters apply to browsing, text,
 image, and similar-image searches. Qdrant indexes these metadata fields and
 The SQL catalogue retains their source labels and date ranges.
 The left-edge Chat tab toggles a companion sidebar alongside the collection,
-so users can browse images while chatting. Replies currently use a local preview. The [frontend guide](frontend/README.md) describes its agent integration
-handler; the chat backend is not connected yet.
+so users can browse images while chatting. The sidebar connects to brand-bound
+conversations, tracks generation tasks, and displays downloadable results. See
+the [frontend guide](frontend/README.md) for sign-in and configuration.
 Date preprocessing follows the [data processing rules](data_processing_spec.md),
 including treating `c.1993` as 1993 for filtering while preserving its display text.
 
@@ -173,8 +174,8 @@ for output fields and options.
 
 The conversation backend supports brand-bound chats, collection image IDs, and
 follow-up edits in Modal sandboxes. See [Brand chat agent backend](docs/chat_agent_backend.md)
-for endpoints, configuration, recovery, and verification. Chat frontend integration
-is deferred.
+for endpoints, configuration, recovery, and verification. The collection chat sidebar connects to these endpoints and supports saved
+conversations, task cancellation, image downloads, and follow-up edits.
 
 
 Gemini Flash handles chat and compiles image tasks in the trusted backend. Modal

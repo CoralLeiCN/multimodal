@@ -1,6 +1,7 @@
 """Read an exact collection image ID without Qdrant or arbitrary URL access."""
 
 import hashlib
+import re
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -8,7 +9,102 @@ from pathlib import Path
 from app.services.agent.storage import AgentError
 
 
+def resolve_record_images(record_uid, engine=None):
+    """Resolve every distinct image in a single read-only catalogue snapshot."""
+    from sqlalchemy import text
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.core.config import Settings
+    from app.core.db import make_engine
+
+    owned = engine is None
+    try:
+        engine = engine if engine is not None else make_engine(Settings())
+        with engine.connect() as connection, connection.begin():
+            if engine.dialect.name == "postgresql":
+                connection.exec_driver_sql(
+                    "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
+                )
+                connection.exec_driver_sql("SET LOCAL statement_timeout = '15s'")
+            generation = (
+                connection.execute(
+                    text(
+                        "SELECT g.id,g.status FROM service_state s "
+                        "JOIN index_generations g ON g.id=s.active_generation WHERE s.id=1"
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            if not generation or generation["status"] != "ready":
+                raise AgentError(
+                    "collection_unavailable",
+                    "No active ready catalogue is available.",
+                    503,
+                )
+            rows = (
+                connection.execute(
+                    text(
+                        "SELECT DISTINCT i.image_id,i.title,i.relative_path,i.checksum,i.generation_id "
+                        "FROM image_associations a JOIN images i "
+                        "ON i.generation_id=a.generation_id AND i.image_id=a.image_id "
+                        "WHERE a.generation_id=:generation AND a.record_uid=:record ORDER BY i.image_id"
+                    ),
+                    {"generation": generation["id"], "record": record_uid},
+                )
+                .mappings()
+                .all()
+            )
+            result = []
+            for row in rows:
+                sources = (
+                    connection.execute(
+                        text(
+                            "SELECT record_uid,image_uid,title,licence,copyright,credit "
+                            "FROM image_associations WHERE generation_id=:generation AND image_id=:image ORDER BY id"
+                        ),
+                        {"generation": generation["id"], "image": row["image_id"]},
+                    )
+                    .mappings()
+                    .all()
+                )
+                result.append({**row, "associations": [dict(item) for item in sources]})
+            return result
+    except (SQLAlchemyError, ValueError):
+        raise AgentError(
+            "collection_unavailable",
+            "The shared PostgreSQL catalogue cannot be read. Check DATABASE_URL.",
+            503,
+        ) from None
+    finally:
+        if owned and engine is not None:
+            engine.dispose()
+
+
 def read_collection_image(settings, image_id):
+    if re.fullmatch(r"co[0-9]+", image_id):
+        matches = resolve_record_images(image_id)
+        if not matches:
+            raise AgentError(
+                "collection_record_missing",
+                f"Collection record {image_id} has no images in the active indexed catalogue. It may still exist in the full museum collection.",
+                404,
+            )
+        if len(matches) > 1:
+            choices = "; ".join(
+                f"{item['image_id']} ({item['title']})" for item in matches
+            )
+            raise AgentError(
+                "collection_record_ambiguous",
+                f"Collection record {image_id} has multiple images. Ask the user to select an image UUID: {choices}",
+                409,
+            )
+        match = matches[0]
+        if settings.collection_api_url:
+            data, source = read_online_image(settings, match["image_id"])
+        else:
+            data, source = read_local_image(settings, match, match["associations"])
+        return data, {**source, "requested_record_uid": image_id}
     if settings.collection_api_url:
         return read_online_image(settings, image_id)
     database = Path(settings.collection_database).resolve()
@@ -43,6 +139,10 @@ def read_collection_image(settings, image_id):
         raise AgentError(
             "collection_unavailable", "The collection catalogue cannot be read.", 503
         ) from None
+    return read_local_image(settings, image, sources)
+
+
+def read_local_image(settings, image, sources):
     root = Path(settings.collection_image_root).resolve()
     path = (root / image["relative_path"]).resolve()
     if not path.is_relative_to(root):
@@ -68,7 +168,7 @@ def read_collection_image(settings, image_id):
         )
     return data, {
         "type": "collection",
-        "image_id": image_id,
+        "image_id": image["image_id"],
         "generation_id": image["generation_id"],
         "title": image["title"],
         "associations": sources,

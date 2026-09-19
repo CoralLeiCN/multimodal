@@ -237,3 +237,10 @@ input asset IDs so subsequent edits preserve provenance. This lookup does not as
 derivative-use permission; the operator must select images authorized for the intended
 use. A policy enforcing rights approval is not part of the current prototype.
 See [Brand chat agent backend](docs/chat_agent_backend.md) for the API and limits.
+
+
+For chat collection-record references (`co…`), the trusted gateway resolves exact
+`image_associations.record_uid` matches through the shared PostgreSQL catalogue.
+It scopes joins to the active ready generation and preserves `requested_record_uid`
+alongside the resolved image UUID and attribution in imported asset provenance.
+Multiple matching images require user selection; see [collection ID lookup](docs/collection_id_lookup.md).

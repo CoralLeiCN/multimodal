@@ -15,7 +15,16 @@ from app.services.agent.storage import AgentError
 
 class ExecutionResult(Contract):
     asset_ids: list[str] = Field(default_factory=list, max_length=1)
-    error_code: Literal["source_unavailable"] | None = None
+    source_message: str = Field(default="", max_length=4000)
+    error_code: (
+        Literal[
+            "source_unavailable",
+            "collection_unavailable",
+            "collection_record_missing",
+            "collection_record_ambiguous",
+        ]
+        | None
+    ) = None
 
 
 class ExecutionGateway:
@@ -91,6 +100,7 @@ class ExecutionGateway:
             run.result = {
                 "asset_ids": result.asset_ids,
                 "execution_status": status,
+                "source_message": result.source_message,
                 "review_status": "needs_review"
                 if any(evaluations[i]["action"] != "accept" for i in result.asset_ids)
                 else "accepted",

@@ -194,8 +194,8 @@ and the [design](../docs/image_agent_design.md).
 
 The conversation backend supports brand-bound chats, collection image IDs, and
 follow-up edits in Modal sandboxes. See [Brand chat agent backend](../docs/chat_agent_backend.md)
-for endpoints, configuration, recovery, and verification. Chat frontend integration
-is deferred.
+for endpoints, configuration, recovery, and verification. The collection chat sidebar connects to these endpoints and supports saved
+conversations, task cancellation, image downloads, and follow-up edits.
 
 
 Gemini Flash handles chat and compiles image tasks in the trusted backend. Modal

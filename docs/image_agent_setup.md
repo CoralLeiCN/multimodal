@@ -10,8 +10,7 @@ Gemini Flash handles conversation outside the sandbox; only compiled design task
 enter the sandbox. Explicit user choices override brand defaults for that task.
 The conversation backend and isolated-worktree setup are documented in
 [Brand chat agent backend](chat_agent_backend.md). The existing Image Studio UI
-continues to use single-run generation; the conversation endpoints are ready for
-a future chat UI.
+continues to use single-run generation; the collection sidebar connects to the conversation endpoints.
 
 ## Prepare the local application
 
@@ -183,8 +182,8 @@ After changing dependencies, run `make agent-lock` and rebuild/redeploy. The two
 requirements files in `deploy/` are exports from `uv.lock`; do not edit them by hand.
 The collection search client can be regenerated separately with `make generate-client`.
 The chat backend can resolve collection image IDs from a read-only catalogue and
-image root accessible to the gateway. The existing UI has no collection-to-chat
-selection control yet; see the chat guide for configuration and source handling.
+image root accessible to the gateway. Use the collection cards’ **Use in chat** control to insert image IDs into chat;
+see the chat guide for configuration and source handling.
 
 
 The shared search catalogue now uses Neon PostgreSQL. Configure

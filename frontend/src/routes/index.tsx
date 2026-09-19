@@ -230,9 +230,11 @@ export function CollectionPage() {
     health.isPending || ((health.data?.indexed_images ?? 0) > 0 && collection.isPending)
   const displayError = error || collection.error?.message || health.error?.message
 
+  const [chatSelection, setChatSelection] = useState<{ id: string; nonce: number }>()
+
   return (
     <div className="collection-workspace">
-      <ChatPanel />
+      <ChatPanel selection={chatSelection} />
       <div className="app-shell">
         <header className="site-header">
           <Link to="/create" className="header-link">
@@ -562,6 +564,7 @@ export function CollectionPage() {
                     key={image.image_id}
                     image={image}
                     onOpen={setDetail}
+                    onChat={(image) => setChatSelection({ id: image.image_id, nonce: Date.now() })}
                     onSimilar={findSimilar}
                     canSearch={available}
                   />

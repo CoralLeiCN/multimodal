@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { mockChat } from "./chat-fixture"
 
 const image = {
   image_id: "11111111-1111-5111-8111-111111111111",
@@ -11,6 +12,7 @@ const image2 = { ...image, image_id: "22222222-2222-5222-8222-222222222222", tit
 const status = { status: "ready", index_version: "test", indexed_images: 2, sample: true, search_available: true, text_search_available: true, message: "Ready" }
 
 test.beforeEach(async ({ page }) => {
+  await mockChat(page)
   await page.route("**/api/v1/status", (route) => route.fulfill({ json: status }))
   await page.route("**/api/v1/filters", (route) => route.fulfill({ json: { index_version: "test", places: ["London", "Paris"], categories: ["Computing", "Optics"], date_min: 1850, date_max: 1950 } }))
   await page.route("**/api/v1/images?*", (route) => route.fulfill({ json: { index_version: "test", indexed_images: 2, items: [image, image2], next_cursor: null } }))
@@ -126,7 +128,7 @@ test("finds similar images and fits a phone viewport", async ({ page }) => {
 })
 
 for (const width of [1280, 390]) {
-  test(`chat preview preserves drafts and messages at ${width}px`, async ({ page }) => {
+  test(`connected chat preserves drafts and messages at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 })
     const chatRequests: string[] = []
     page.on("request", (request) => {
@@ -140,7 +142,7 @@ for (const width of [1280, 390]) {
     await expect(dialog).toBeVisible()
     await expect(composer).toBeFocused()
     await expect(page.getByRole("button", { name: "Send message" })).toBeDisabled()
-    await page.getByRole("button", { name: "Tell me about early computers" }).click()
+    await composer.fill("Tell me about early computers")
     await expect(composer).toHaveValue("Tell me about early computers")
     await composer.press("Shift+Enter")
     await composer.pressSequentially("And their inventors")
@@ -152,7 +154,7 @@ for (const width of [1280, 390]) {
     await expect(composer).toHaveValue("Tell me about early computers\nAnd their inventors")
     await composer.press("Enter")
     await expect(page.getByRole("log")).toContainText("And their inventors")
-    await expect(page.getByRole("log")).toContainText("This is a preview conversation")
+    await expect(page.getByRole("log")).toContainText("Here is your brand image.")
     await expect(composer).toHaveValue("")
     await page.getByRole("button", { name: "Close collection chat" }).click()
     await toggle.click()
@@ -165,8 +167,8 @@ for (const width of [1280, 390]) {
     await page.getByRole("button", { name: "New chat" }).click()
     await expect(page.getByRole("log")).toBeEmpty()
     await expect(composer).toBeFocused()
-    await expect(page.getByRole("button", { name: "Tell me about early computers" })).toBeVisible()
-    expect(chatRequests).toEqual([])
+    await expect(page.getByLabel("Brand", { exact: true })).toHaveValue("brand-1")
+    expect(chatRequests.some((url) => url.endsWith("/messages"))).toBe(true)
   })
 }
 
@@ -205,3 +207,14 @@ for (const width of [1280, 390]) {
     await expect(toggle).toHaveAttribute("aria-expanded", "false")
   })
 }
+
+test("sends the selected search image ID to the chat backend", async ({ page }) => {
+  const mock = await mockChat(page)
+  await page.goto("/")
+  await page.getByRole("button", { name: "Use Brass microscope in chat" }).click()
+  await expect(page.getByLabel("Message the collection companion")).toHaveValue(`Use image ID ${image.image_id} to create an image in my brand style.`)
+  await expect(page.getByLabel("Brand", { exact: true })).toHaveValue("brand-1")
+  await page.getByRole("button", { name: "Send message" }).click()
+  await expect.poll(() => mock.sent.length).toBe(1)
+  expect(mock.sent[0].content).toContain(image.image_id)
+})

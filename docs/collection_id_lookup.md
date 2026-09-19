@@ -112,3 +112,15 @@ An empty `images` array means no match in the active ready catalogue. A missing
 connection or schema is a setup error. Check the
 [Neon setup](neon_setup.md) and `DATABASE_URL` before retrying. This lookup makes
 no schema or data changes.
+
+
+The chat executor accepts `co` collection record IDs as well as image UUIDs.
+For a record ID, the trusted gateway queries `DATABASE_URL` using an exact bound
+`record_uid` match in a read-only, repeatable-read transaction. All distinct images
+from the active ready generation are returned. A single match is resolved to its
+UUID before loading from the configured collection API or local image root.
+Multiple matches are returned to chat for selection; the agent does not choose an
+arbitrary image. Missing records and unavailable catalogues have separate errors.
+Imported assets retain `requested_record_uid`, the resolved image UUID, and attribution.
+The gateway process needs the catalogue connection even when image bytes use the
+online API. Restart the API and worker after updating this code.

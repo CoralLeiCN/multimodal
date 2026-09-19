@@ -13,19 +13,18 @@ documents, and archives from the Science Museum Group.
   see [Image Studio setup](image_agent_setup.md).
 - The chat backend accepts collection image IDs in messages and can generate in the
   configured brand style, then edit the result in later turns. The existing studio
-  UI still accepts uploaded references; chat API integration is deferred.
+  UI still accepts uploaded references; the collection sidebar uses the chat API.
 - Users can open a chat panel from the left edge to explore the collection with
   an agent while browsing and searching images in the same view. The frontend
-  currently provides a local preview with suggested
-  prompts, message history, and a new-chat control. Agent replies require the
-  backend connection described in the [frontend guide](../frontend/README.md).
+  connects to saved brand conversations, with task status, result images,
+  history, and a new-chat control. See the [frontend guide](../frontend/README.md).
 - Users can use a world model to generate a refreshed view of a collection.
 
 
 The conversation backend supports brand-bound chats, collection image IDs, and
 follow-up edits in Modal sandboxes. See [Brand chat agent backend](chat_agent_backend.md)
-for endpoints, configuration, recovery, and verification. Chat frontend integration
-is deferred.
+for endpoints, configuration, recovery, and verification. The collection chat sidebar connects to these endpoints and supports saved
+conversations, task cancellation, image downloads, and follow-up edits.
 
 
 Gemini Flash handles chat and compiles image tasks in the trusted backend. Modal

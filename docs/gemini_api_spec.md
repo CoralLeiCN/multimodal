@@ -153,3 +153,10 @@ sandboxes execute source lookup, Nano Banana generation, evaluation, and result 
 Current user instructions override conflicting brand defaults for that task; the
 saved brand remains unchanged. Pure chat does not create a sandbox. Collection image
 IDs can resolve through the local catalogue or a configured trusted online API.
+
+Agent planning and evaluation send Pydantic-generated JSON Schema through
+`response_json_schema` on GenerateContent. This preserves `additionalProperties`
+from the strict contracts without serializing it as the unsupported
+`response_schema.additional_properties` field. Responses are still validated
+locally before execution continues. Transport tests verify the actual request
+body for both operations.

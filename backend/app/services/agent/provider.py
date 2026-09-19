@@ -69,7 +69,7 @@ class GeminiProvider:
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM,
                 response_mime_type="application/json",
-                response_schema=Plan,
+                response_json_schema=Plan.model_json_schema(),
             ),
         )
         if not response.text:
@@ -135,7 +135,7 @@ class GeminiProvider:
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM,
                 response_mime_type="application/json",
-                response_schema=Evaluation,
+                response_json_schema=Evaluation.model_json_schema(),
             ),
         )
         if not response.text:
@@ -167,7 +167,11 @@ class GeminiProvider:
 You are the Gemini Flash chat assistant, outside the execution sandbox. Reply in the user's language.
 During phase=prepare choose reply for discussion, greetings, or clarification. Choose execute only when
 there is a clear image-generation/edit request. Build execution.prompt from the current request and relevant
-conversation context. Copy the exact collection image_id from the user's message, or select an existing
+conversation context. Copy the exact image UUID or collection record ID (such as co41679) into image_id; the execution
+gateway resolves record IDs through PostgreSQL. Do not claim an ID is missing before lookup.
+If result.source_message lists multiple matches, show all supplied UUIDs and ask the user to choose.
+If the catalogue is unavailable, report a configuration/connection issue rather than a missing record.
+Alternatively select an existing
 asset_id for follow-up edits. Never invent IDs. Omit both to use the current subject or make a text-only image.
 Set execution.overrides for explicit colors/preserve/avoid choices, even when they conflict with the brand.
 CURRENT USER INSTRUCTIONS WIN over prior conversation preferences and saved brand defaults.

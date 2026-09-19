@@ -24,21 +24,25 @@ chatting. The collection and conversation scroll independently, and interacting
 with the collection leaves the sidebar open. On screens up to 900px wide, the
 collection and chat share the screen vertically with chat below the collection.
 
-Chat includes suggested prompts, a multiline composer, message history, and a
-New chat control. Enter sends a message; Shift + Enter adds a line. Closing the
-sidebar preserves the conversation and draft until the page reloads. Escape
-while focus is inside the chat closes it and restores focus to the tab.
+Chat uses the authenticated `/api/v1/agent/conversations` endpoints. Sign in with
+the workspace access key, select a saved brand version, and send a message.
+Create or update brands at `/create`. Each search card's **Use in chat** button
+inserts its exact image UUID into the draft; it never submits automatically.
 
-Chat currently runs as an explicitly labelled local preview. Messages are held
-in React state, and the preview returns a fixed explanatory reply without making
-network requests. To connect an agent, pass an `onSend` handler to `ChatPanel` in
-`src/routes/index.tsx`. The exported `ChatReplyHandler` in
-`src/components/chat-panel.tsx` accepts the complete message history (including
-the latest user message) and an `AbortSignal`, and resolves to the assistant's
-reply string. Providing this handler removes the preview labels. The component
-handles pending replies, retry after failure, and cancellation when starting a
-new chat or unmounting. Closing the sidebar lets a pending reply finish. Keep
-credentials and agent execution in the backend; no chat endpoint is assumed here.
+The sidebar polls durable history every two seconds while open, displays task
+status, supports cancellation, and renders generated images with download and edit
+controls. Use the Conversation selector to restore history after a page reload.
+Closing the panel preserves its draft; the draft itself is not persisted on reload.
+New chat starts a conversation bound to the selected brand on the next send.
+A lost submission response is retried with the same body and idempotency key.
+API keys remain on the server, and workspace authentication uses the existing
+HTTP-only cookie. An unavailable backend displays an error instead of a preview reply.
+
+Enter sends a message; Shift + Enter adds a line. Escape inside the chat closes it
+and restores focus to the tab. Run `make agent-worker` alongside the API to process
+turns. Generation also requires Modal credentials and the public HTTPS gateway.
+For a Neon catalogue, set `AGENT_COLLECTION_API_URL` to the collection API's HTTPS
+origin. See [chat backend configuration](../docs/chat_agent_backend.md).
 
 From the repository root, start the backend as described in
 [the backend guide](../backend/README.md), then run:
