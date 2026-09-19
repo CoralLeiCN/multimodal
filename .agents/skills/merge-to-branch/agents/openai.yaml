@@ -1,0 +1,4 @@
+interface:
+  display_name: "Merge to Branch"
+  short_description: "Squash current work into a chosen target branch"
+  default_prompt: "Use $merge-to-branch to squash every committed change from my current branch into <target-branch> as one commit."

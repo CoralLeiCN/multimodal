@@ -1,0 +1,12 @@
+{
+  "name": "multimodal",
+  "private": true,
+  "workspaces": ["frontend"],
+  "scripts": {
+    "dev": "bun run --cwd frontend dev",
+    "build": "bun run --cwd frontend build",
+    "lint": "bun run --cwd frontend lint",
+    "test": "bun run --cwd frontend test",
+    "generate-client": "bun run --cwd frontend generate-client"
+  }
+}
