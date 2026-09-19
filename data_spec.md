@@ -154,8 +154,10 @@ and image rights in SQLite and the JSONL selection snapshot.
 Duplicate labels compare by Unicode NFKC normalization, collapsed whitespace,
 and case folding. Original display labels remain in SQLite. Dates must have
 nonzero integer years between -9999 and 9999 and a start no later than the end.
-Partial, reversed, unknown, or unparseable dates contribute no interval. Free
-text such as “circa 1850” is not interpreted without structured source bounds.
+Partial, reversed, unknown, or unparseable dates contribute no interval.
+Without structured bounds, `c.1993` becomes the single-year interval 1993–1993
+under the [special circa-year rule](data_processing_spec.md#special-date-rule-circa-year).
+Other free text such as “circa 1850” is not interpreted without structured source bounds.
 Keep disjoint ranges and separate record associations distinct. Raw date text
 still includes all supplied creation and top-level date values for display.
 

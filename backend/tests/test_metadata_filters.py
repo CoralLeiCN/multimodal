@@ -2,10 +2,10 @@ import json
 
 import pytest
 from app.main import create_app
-from app.models import Generation, Image, Ingestion
+from app.models import Association, Generation, Image, Ingestion
 from app.schemas import MetadataFilters
 from app.services.ingestion import create_generation, run_ingestion
-from app.services.metadata import extract_metadata
+from app.services.metadata import extract_metadata, sqlite_filter
 from app.services.metadata_refresh import refresh_metadata
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -56,6 +56,27 @@ def test_source_ranges_labels_and_unknown_dates():
         "date_ranges"
     ] == [{"date_from": 1800, "date_to": 1810}]
     assert extract_metadata({}) == {"places": [], "categories": [], "date_ranges": []}
+
+
+@pytest.mark.parametrize(
+    "date, expected",
+    [
+        ({"value": "c.1993"}, [(1993, 1993)]),
+        ({"value": " C. 1993 "}, [(1993, 1993)]),
+        ({"value": "c.-400"}, [(-400, -400)]),
+        ({"value": "c.0"}, []),
+        ({"value": "c.10000"}, []),
+        ({"value": "circa 1993"}, []),
+        ({"value": "c.1990-1995"}, []),
+        ({"value": "c.1993", "from": "1990", "to": "1995"}, [(1990, 1995)]),
+        ({"value": "c.1993", "from": "1990"}, []),
+        ({"value": "c.1993", "from": "1995", "to": "1990"}, []),
+    ],
+)
+def test_circa_year_rule_respects_bounds_and_validation(date, expected):
+    assert extract_metadata({"creation": {"date": [date]}})["date_ranges"] == [
+        {"date_from": start, "date_to": end} for start, end in expected
+    ]
 
 
 @pytest.mark.parametrize(
@@ -209,7 +230,7 @@ def test_refresh_preserves_vectors_and_ingestion_state(setup, tmp_path, ready):
                 {
                     "@admin": {"uid": item["associations"][0]["record_uid"]},
                     "creation": {
-                        "date": [{"from": "1800", "to": "1810"}],
+                        "date": [{"value": "c.1993"}],
                         "place": [{"summary": {"title": "Edinburgh"}}],
                     },
                     "category": [{"name": "Science"}],
@@ -236,6 +257,14 @@ def test_refresh_preserves_vectors_and_ingestion_state(setup, tmp_path, ready):
         assert all(
             image.filter_metadata[0]["place"] == ["edinburgh"] for image in images
         )
+        associations = session.exec(
+            select(Association).where(Association.generation_id == generation_id)
+        ).all()
+        assert all(association.date == "c.1993" for association in associations)
+        assert all(
+            association.date_ranges == [{"date_from": 1993, "date_to": 1993}]
+            for association in associations
+        )
         ingestions = session.exec(select(Ingestion)).all()
         assert {item.status for item in ingestions} == (
             {"indexed"} if ready else {"pending"}
@@ -246,6 +275,20 @@ def test_refresh_preserves_vectors_and_ingestion_state(setup, tmp_path, ready):
             generation, [1.0, 0.0, 0.0], 1, filters=MetadataFilters(place=["Edinburgh"])
         )
         assert str(points[0].id) == selected[0]["image_id"]
+        for year, expected in [(1992, 0), (1993, 3), (1994, 0)]:
+            filters = MetadataFilters(date_from=year, date_to=year)
+            assert len(
+                vectors.search(generation, [1.0, 0.0, 0.0], 10, filters=filters)
+            ) == expected
+            with Session(engine) as session:
+                assert len(
+                    session.exec(
+                        select(Image).where(
+                            Image.generation_id == generation_id,
+                            sqlite_filter(filters),
+                        )
+                    ).all()
+                ) == expected
     assert (
         refresh_metadata(engine, settings, generation_id, [metadata], 3, vectors)
         == result

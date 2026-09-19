@@ -109,6 +109,8 @@ may already have added empty columns.
 
 Successful refreshes update SQLite fields and `selections/RUN_ID.jsonl`, ensure
 the four Qdrant payload indexes exist, and replace metadata on existing points.
+They apply the [date processing rules](../data_processing_spec.md), including
+mapping `c.1993` without structured bounds to 1993–1993 for filtering.
 Embedding vectors, cache entries, point IDs, and ingestion statuses are retained.
 A prepared sample receives an empty Qdrant collection with payload indexes and
 remains pending until embedding ingestion completes.

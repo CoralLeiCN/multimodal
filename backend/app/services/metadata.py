@@ -53,7 +53,13 @@ def extract_metadata(record: dict) -> dict:
         if date.get("from") is not None or date.get("to") is not None:
             start, end = year(date.get("from")), year(date.get("to"))
         else:
-            start = end = year(date.get("value"))
+            value = date.get("value")
+            # Treat c.YYYY as that year for filtering; retain source display text.
+            if isinstance(value, str) and (
+                match := re.fullmatch(r"c\.\s*(-?\d{1,4})", value.strip(), re.IGNORECASE)
+            ):
+                value = match[1]
+            start = end = year(value)
         if start is not None and end is not None and start <= end:
             ranges.add((start, end))
     return {

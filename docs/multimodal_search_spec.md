@@ -432,7 +432,7 @@ upserting vectors. Existing indexes with incompatible types are an error.
 | --- | --- | --- |
 | `metadata[].place` | `keyword` | Exact normalized creation-place labels. |
 | `metadata[].category` | `keyword` | Exact normalized category labels. |
-| `metadata[].date_from` | `integer` | Beginning of a supplied historical year range. |
+| `metadata[].date_from` | `integer` | Beginning of a historical year range after date preprocessing. |
 | `metadata[].date_to` | `integer` | End of that range. |
 
 Use Unicode NFKC normalization, collapsed whitespace, and case folding for both
@@ -446,6 +446,8 @@ years represent BCE and zero is invalid. Either request bound may be omitted.
 A stored interval matches when its end is at least the requested start and its
 start is at most the requested end. Thus a source range of 1850–1870 matches a
 search for 1860. Unknown dates match only requests with no date restriction.
+Without structured source bounds, `c.1993` maps to 1993–1993 while retaining
+the original display text. See the [special date rule](../data_processing_spec.md#special-date-rule-circa-year).
 Missing places and categories fail a filter on that field and otherwise remain
 eligible. Reject reversed ranges, blank labels, labels longer than 300 characters,
 and more than 20 values per field with `422`.

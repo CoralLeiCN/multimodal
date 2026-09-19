@@ -77,6 +77,8 @@ a sample of 50 local images using the
 Creation year, creation place, and category filters apply to browsing, text,
 image, and similar-image searches. Qdrant indexes these metadata fields and
 SQLite retains their source labels and date ranges.
+Date preprocessing follows the [data processing rules](data_processing_spec.md),
+including treating `c.1993` as 1993 for filtering while preserving its display text.
 
 Pydantic Logfire traces API requests, Gemini embedding calls, indexing, and
 database operations. Cloud export uses separate local project credentials for
