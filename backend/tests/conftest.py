@@ -33,6 +33,9 @@ class FakeEmbeddings:
                 return [float(red), float(green), float(blue)]
         return [1.0, 0.0, 0.0] if text == "red" else [0.0, 1.0, 0.0]
 
+    def embed_images(self, images):
+        return [self.embed(image=data, mime_type=mime) for data, mime in images]
+
     def close(self):
         pass
 

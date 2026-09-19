@@ -182,8 +182,17 @@ The browser accesses the SQL catalogue and Qdrant through the backend.
 
 ## Bounded data selection
 
-Default to at most **50 distinct images**, with a scan limit of **1,000 source
-records**. Both limits are configurable, up to 1,000 images and 10,000 records.
+Sampling requires an explicit `--limit` from 1 to 1,000 distinct images, with a
+scan limit of **1,000 source records** by default and a maximum of 10,000 records.
+`make preview-index` supplies a 50-image limit when none is given. Plain
+`make index` and the indexing script without `--limit` skip metadata scanning,
+sampling, and generation creation. Reuse the saved generation matching
+`QDRANT_COLLECTION_NAME`, or the sole saved generation if no collection is
+configured. Return a clear error for an empty or ambiguous catalogue; use an
+explicit `--limit` for the first selection and `--resume RUN_ID` to disambiguate.
+Continue prepared or failed generations and verify already-ready generations.
+Verified indexed images skip embedding and vector writes. Selection options,
+including dry runs and preparation, require `--limit`.
 Maintain a bounded sample using a stable hash of the image location and seed 42
 while streaming metadata. Decode only the selected candidates after the scan.
 Failed embedding requests do not cause the selection to grow.
@@ -231,8 +240,10 @@ which is the proposed default for this service.
 Generate one image embedding per selected image. Display metadata is stored in
 the catalogue. Use the same model and dimension for query embeddings. Format text
 queries as `task: search result | query: {text}`. Send image queries as image
-content. Supply one image per embedding call to keep the vector-to-image mapping
-explicit. JPEG and PNG are the initial supported formats.
+content. For indexing batches, wrap each image in its own `Content` object and
+map the returned vectors to inputs in order. Multiple image parts inside one
+`Content` would combine their representation. JPEG and PNG are the initial
+supported formats.
 [Source: embedding inputs and task formatting](https://ai.google.dev/gemini-api/docs/embeddings).
 
 Illustrative indexing call:
@@ -244,17 +255,20 @@ from google.genai import types
 with genai.Client() as client:
     response = client.models.embed_content(
         model="gemini-embedding-2",
-        contents=types.Content(parts=[
-            types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-        ]),
+        contents=[
+            types.Content(parts=[
+                types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+            ])
+            for image_bytes, mime_type in images
+        ],
         config=types.EmbedContentConfig(output_dimensionality=1536),
     )
-    vector = response.embeddings[0].values
+    vectors = [embedding.values for embedding in response.embeddings]
 ```
 
-`image_bytes` and `mime_type` above come from a validated selected file. Require
-exactly one returned vector with the expected dimension, finite values, and a
-nonzero norm. Normalize stored and query vectors to unit length. Configure
+`images` above contains validated image bytes and MIME types for one bounded
+request. Require exactly one returned vector per input image, each with the
+expected dimension, finite values, and a nonzero norm. Normalize stored and query vectors to unit length. Configure
 Qdrant with cosine distance and return its results by descending score. Order
 equal-score results returned by Qdrant by image ID; tied candidates at the result
 limit can vary. Scores express similarity and must not be labelled as probabilities.
@@ -436,10 +450,28 @@ return the image to `pending` and generate its embedding. Verify Qdrant points
 before skipping rows previously marked `indexed`; a local status alone does not
 prove the point still exists after a Qdrant restore or storage loss.
 
-Start with sequential embedding requests, at most three attempts per image,
-and bounded backoff for temporary provider or Qdrant failures. Track attempts and
+Process up to 10 batches concurrently by default, configurable from 1 to 10 with
+`--workers` or Make's `WORKERS`. Each batch holds up to 10 catalogue images by
+default; `--batch-size` or `BATCH_SIZE` accepts 1–100. Only uncached, distinct
+content is sent to Gemini, with a separate `Content` object and output vector for
+each image. Flush partial batches and split requests at 12 MiB of raw image
+bytes. Reject individual images over that budget or `MAX_IMAGE_BYTES`. Validate
+the entire response's vector count, dimensions, and values before caching it.
+Commit the response's vectors together before catalogue updates or vector writes.
+
+Use separate catalogue sessions per worker and acquire shared-checksum locks in
+a stable order so concurrent batches reuse one cache entry without deadlocking.
+Serialize Qdrant writes and point verification within the run. Report progress as
+workers finish and preserve trace context in worker threads, including batch
+attempts and per-image vector writes. Worker count and batch size can change on
+resume and do not affect the embedding configuration fingerprint. Allow at most
+three attempts per image across embedding and vector writes, with bounded backoff
+for temporary provider or Qdrant failures. Successful parts of a split batch
+remain cached; retries request only the missing content. Track attempts and
 the last processing state. Stop on credential, collection configuration, or
-model errors. New selections create new catalogue rows while reusing unchanged
+model errors. Stop scheduling new batches on failure or interruption and wait for
+active workers before closing clients, releasing the writer lock, or marking the
+generation failed. New selections create new catalogue rows while reusing unchanged
 image embeddings. The metadata refresh command updates filter fields on an
 existing selection without re-embedding its images.
 
@@ -685,7 +717,8 @@ bash scripts/generate-client.sh
 ```
 
 Support repeatable `--metadata`, `--seed`, `--limit`, `--scan-limit`, `--dry-run`,
-`--prepare-only`, and `--resume <run_id>`. Configure roots and storage paths through
+`--prepare-only`, and `--resume <run_id>`. Omission of `--limit` reuses a saved
+selection, as described above. Configure roots and storage paths through
 backend settings. Reject conflicting selection options when resuming. Exit `0`
 for success and `2` for invalid options or a failed run. Report partial selections
 clearly. Dry runs and preparation make zero embedding calls or Qdrant writes.

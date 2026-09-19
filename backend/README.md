@@ -14,11 +14,19 @@ uv run --package multimodal-backend cronjob/index_images.py --limit 50 --scan-li
 uv run --package multimodal-backend uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
+After selecting images once, run `make index` or the indexing script without
+`--limit` to reuse the saved catalogue and bypass metadata scanning and sampling.
+It resumes unfinished work and skips verified indexed images. The configured
+`QDRANT_COLLECTION_NAME` selects the saved generation; otherwise the catalogue
+must contain exactly one generation. Use `--resume RUN_ID` when it contains
+several, or an explicit `--limit` to select a new sample. Selection flags and
+`--prepare-only` require `--limit`; `make preview-index` supplies 50 by default.
+
 Set `GEMINI_API_KEY` in the ignored root `.env` file before indexing or searching.
 Settings load `.env`, then `.env.local`; process environment variables take precedence. Indexing sends selected image bytes to
-Google; text and uploaded-image searches send the query to Google. A run of 50
-uncached images makes 50 embedding requests, with up to three attempts on
-temporary failures. “Find similar” uses the stored Qdrant vector.
+Google; text and uploaded-image searches send the query to Google. With the default batch size, 50
+uncached, distinct small images need five embedding requests before retries.
+Large images split into smaller requests; each image has up to three attempts. “Find similar” uses the stored Qdrant vector.
 
 The server applies the Alembic migration on startup. The ingestion command also
 applies it before creating a run. Set `DATABASE_URL` for PostgreSQL and
@@ -42,8 +50,18 @@ Apply catalogue migrations explicitly with:
 uv run --package multimodal-backend alembic -c backend/alembic.ini upgrade head
 ```
 
-Cache writes commit before ingestion records an image as embedded, so retries
-reuse the committed vector after an interruption.
+Indexing defaults to `--batch-size 10 --workers 10`: up to 10 image batches in
+flight, each holding up to 10 catalogue images. Use
+`make index BATCH_SIZE=10 WORKERS=4` to choose the limits. `--batch-size` accepts 1–100; `--workers` accepts
+1–10. Only uncached content is embedded, with one separate vector per image.
+Requests split at 12 MiB of raw image bytes. `BATCH_SIZE=1` sends one image per
+request. Both settings may change when resuming a run.
+
+Each worker owns its catalogue sessions. All vectors in a response are validated
+and committed to the cache before catalogue updates or Qdrant writes, so retries
+reuse completed embeddings after an interruption. Active workers finish before
+the run releases its writer lock; publication waits for all images and Qdrant
+verification.
 
 Embeddings default to 1,536 dimensions. Copy the Qdrant Cloud endpoint and API
 key into `QDRANT_URL` and `QDRANT_API_KEY` in `.env`; skip the Docker command

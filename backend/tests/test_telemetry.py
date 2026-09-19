@@ -180,3 +180,18 @@ def test_indexer_restores_environment_when_configuration_fails(monkeypatch):
         )
     assert os.environ["LOGFIRE_TOKEN"] == "api-token"
     assert not telemetry._configured
+
+
+def test_concurrent_image_spans_remain_children_of_index_run(setup, spans):
+    settings, engine, _, _, run_id, vectors, embeddings = setup
+    run_ingestion(engine, settings, run_id, embeddings, vectors)
+    exported = [
+        span
+        for span in spans.exported_spans
+        if span.attributes.get("logfire.span_type") == "span"
+    ]
+    run = next(span for span in exported if span.name == "index.run")
+    attempts = [span for span in exported if span.name == "index.image"]
+    assert len(attempts) == 3
+    assert all(span.parent.span_id == run.context.span_id for span in attempts)
+    assert all(span.context.trace_id == run.context.trace_id for span in attempts)

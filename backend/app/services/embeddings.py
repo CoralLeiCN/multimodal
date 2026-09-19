@@ -1,4 +1,5 @@
 import math
+from threading import Lock
 
 import httpx
 import logfire
@@ -32,6 +33,7 @@ class GeminiEmbeddings:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.client = None
+        self._client_lock = Lock()
 
     def close(self):
         if self.client:
@@ -59,18 +61,6 @@ class GeminiEmbeddings:
         image: bytes | None = None,
         mime_type: str = "image/jpeg",
     ) -> list[float]:
-        if not self.settings.gemini_api_key:
-            raise SearchError(
-                "Configure GEMINI_API_KEY in the backend environment.",
-                "missing_api_key",
-            )
-        if self.client is None:
-            self.client = genai.Client(
-                api_key=self.settings.gemini_api_key.get_secret_value(),
-                http_options=types.HttpOptions(
-                    timeout=20000, retry_options=types.HttpRetryOptions(attempts=1)
-                ),
-            )
         content = (
             types.Content(
                 parts=[types.Part.from_bytes(data=image, mime_type=mime_type)]
@@ -78,10 +68,43 @@ class GeminiEmbeddings:
             if image is not None
             else f"task: search result | query: {text}"
         )
+        return self._request(content, expected_count=1)[0]
+
+    def embed_images(self, images: list[tuple[bytes, str]]) -> list[list[float]]:
+        """Return one vector per image, preserving input order in a single request."""
+        if not images:
+            return []
+        contents = [
+            types.Content(parts=[types.Part.from_bytes(data=data, mime_type=mime)])
+            for data, mime in images
+        ]
+        with logfire.span(
+            "gemini.embed",
+            model=self.settings.embedding_model,
+            dimensions=self.settings.embedding_dimensions,
+            input_kind="image",
+            batch_size=len(images),
+        ):
+            return self._request(contents, expected_count=len(images))
+
+    def _request(self, contents, *, expected_count: int) -> list[list[float]]:
+        if not self.settings.gemini_api_key:
+            raise SearchError(
+                "Configure GEMINI_API_KEY in the backend environment.",
+                "missing_api_key",
+            )
+        with self._client_lock:
+            if self.client is None:
+                self.client = genai.Client(
+                    api_key=self.settings.gemini_api_key.get_secret_value(),
+                    http_options=types.HttpOptions(
+                        timeout=20000, retry_options=types.HttpRetryOptions(attempts=1)
+                    ),
+                )
         try:
             result = self.client.models.embed_content(
                 model=self.settings.embedding_model,
-                contents=content,
+                contents=contents,
                 config=types.EmbedContentConfig(
                     output_dimensionality=self.settings.embedding_dimensions
                 ),
@@ -109,11 +132,12 @@ class GeminiEmbeddings:
                 "The Gemini embedding service is unavailable. Try again.",
                 "embedding_unavailable",
             ) from None
-        if not result.embeddings or len(result.embeddings) != 1:
+        if not result.embeddings or len(result.embeddings) != expected_count:
             raise SearchError(
                 "Gemini returned an unexpected number of embeddings.",
                 "invalid_embedding",
             )
-        return normalize(
-            result.embeddings[0].values, self.settings.embedding_dimensions
-        )
+        return [
+            normalize(embedding.values, self.settings.embedding_dimensions)
+            for embedding in result.embeddings
+        ]

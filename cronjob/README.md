@@ -16,22 +16,74 @@ uv run --package multimodal-backend cronjob/index_images.py --limit 50 --scan-li
 uv run --package multimodal-backend cronjob/index_images.py --limit 50 --scan-limit 1000
 ```
 
-The defaults select up to 50 distinct images from the first 1,000 object records,
-using a stable hash sample with seed 42. Only selected image files are decoded.
+An explicit `--limit` selects a new sample. The commands above select up to 50
+distinct images from the first 1,000 object records, using seed 42. Only selected image files are decoded.
 Original metadata is streamed and the full image archive is not loaded. The
 selection skips missing, ambiguous, corrupt, and unresolved-rights images. A
 shorter sample is reported if fewer eligible files are available. Paths are
 matched in full against the image root and its immediate extraction folders.
+
+Omit `--limit` to reuse the saved catalogue directly:
+
+```sh
+make index
+uv run --package multimodal-backend cronjob/index_images.py
+```
+
+These commands skip metadata scanning, sampling, and selection creation. They
+use the generation for `QDRANT_COLLECTION_NAME`, or the only saved generation
+when no permanent collection is configured. An empty catalogue requires an
+explicit `--limit` first. If several generations exist without a configured
+collection, choose one with `--resume RUN_ID`. Saved prepared or failed runs
+continue ingestion; ready runs only verify their index. Pending uncached images
+still need local files. Verified indexed images need no image reads or embedding
+requests. `make index LIMIT=50` explicitly samples again.
+
+Selection options (`--metadata`, `--seed`, `--scan-limit`, `--dry-run`, and
+`--prepare-only`) require `--limit`. `make preview-index` supplies `--limit 50`
+when `LIMIT` is omitted and defaults to scanning 1,000 records. Plain `make index`
+supplies neither a limit nor a scan limit.
 
 `--metadata PATH` can be repeated for specific bronze exports. `--seed` changes
 the sample, `--scan-limit` accepts up to 10,000 records, and `--limit` accepts up
 to 1,000 images. `--prepare-only` saves the selection snapshot and catalogue tracking
 rows without contacting Gemini, Qdrant, or R2.
 
+Indexing defaults to 10 images per Gemini request and up to 10 concurrent batch
+workers. Set `--batch-size` from 1 to 100 and `--workers` from 1 to 10, or use:
+
+```sh
+make index BATCH_SIZE=10 WORKERS=10
+```
+
+Each image is wrapped in its own Gemini `Content` object and receives a separate
+vector. A worker processes up to `batch-size` catalogue images at a time; only
+uncached, distinct content is sent to Gemini. Requests contain at most 12 MiB of
+raw image bytes and split further when needed. A single image must also fit that
+budget and `MAX_IMAGE_BYTES` (10 MiB by default). Partial batches are sent at the
+end of the selection. The default allows up to 100 catalogue images in progress,
+with at most 10 embedding requests in flight. `BATCH_SIZE=1` restores one image
+per request; `WORKERS=1 BATCH_SIZE=1` processes images sequentially. The selection
+limit is independent of both settings.
+
+Workers use separate catalogue sessions. Batches sharing image checksums wait
+for each other and reuse their cache entries. The full response is checked for
+vector count, dimensions, and finite values before any of that response is
+cached. Valid vectors are cached together before catalogue status updates and
+Qdrant writes. Each image retains its three-attempt budget; vector-write retries
+use its cached embedding. Successful parts of a split request remain cached if
+a later part fails. Qdrant writes and verification are serialized within the run.
+Progress counts images as workers finish, which may differ from selection order.
+
+On failure or interruption, the run stops starting new batches and waits for
+active workers before releasing its writer lock or closing clients. Completed
+embeddings remain cached for resume. Publication requires all images to finish
+and pass verification. Batch size and worker count can be changed on resume.
+
 Each run prints its ID. Resume an interrupted or prepared run with:
 
 ```sh
-uv run --package multimodal-backend cronjob/index_images.py --resume RUN_ID
+uv run --package multimodal-backend cronjob/index_images.py --resume RUN_ID --workers 10 --batch-size 10
 ```
 
 The ignored root `.env` supplies `GEMINI_API_KEY`. Indexing uploads the selected
@@ -53,7 +105,7 @@ Exit `0` indicates success and `2` indicates an invalid or failed run.
 See [the backend guide](../backend/README.md) for API and configuration details.
 
 Indexing uses [Logfire tracing](../backend/README.md#logfire-tracing) under the
-`multimodal-indexer` service. It records run and image attempt spans, retries,
+`multimodal-indexer` service. It records run, batch, and image attempt spans, retries,
 and completion counts, and flushes telemetry before exiting. Cloud export uses
 `.logfire/indexer/` credentials or `LOGFIRE_INDEXER_TOKEN` for its own project; set
 `LOGFIRE_SEND_TO_LOGFIRE=false` to disable it.
@@ -68,6 +120,11 @@ To reuse an existing collection, set `QDRANT_COLLECTION_NAME` to its exact name
 and use its shared Neon catalogue. New runs reuse that collection's generation
 and add or update selected images while retaining earlier images. Stable image
 IDs prevent duplicates and cached embeddings avoid repeated embedding requests.
+Repeated runs keep the same sample for the same inputs, seed, and limits. Images
+already marked indexed are checked against Qdrant and skip embedding and vector
+writes when their payload and vector match. This also works without the local
+embedding cache. Missing or mismatched points are repaired. Indexed images still
+count toward the sample limit; they are not replaced with new images.
 The selection limit applies to each sample; the accumulated collection may be larger.
 Changing the seed changes the sample but does not guarantee new images.
 

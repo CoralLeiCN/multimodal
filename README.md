@@ -39,7 +39,7 @@ make setup
 # For local Qdrant, set QDRANT_URL=http://127.0.0.1:6333 and QDRANT_API_KEY=
 make qdrant-up
 make preview-index
-make index
+make index LIMIT=50
 make run
 ```
 
@@ -47,14 +47,22 @@ For Qdrant Cloud, fill in `QDRANT_URL` and `QDRANT_API_KEY` in `.env` with your
 cluster endpoint and key, and skip `make qdrant-up`. The example configuration
 uses Cloud placeholders and 1,536 embedding dimensions. If an existing `.env`
 uses 768 dimensions, change `EMBEDDING_DIMENSIONS` to `1536`, build a new index
-with `make index`, and restart the app.
+with `make index LIMIT=50`, and restart the app.
 
-Indexing requires the object JSON export under `data/bronze/` and extracted
-thumbnails under `data/images/`; see [data sources and paths](data_spec.md).
+Selecting a new sample requires the object JSON export under `data/bronze/` and
+extracted thumbnails under `data/images/`; see [data sources and paths](data_spec.md).
 Setup installs dependencies and creates configuration; it does not download
 collection data. The preview selects up to 50 images from 1,000 records without
 embedding requests. `make index` sends selected images to Google's Gemini API
 and may incur API charges. Text and uploaded-image searches also use Gemini.
+
+After the first selection, plain `make index` reuses the saved catalogue and
+skips metadata scanning and sampling. Verified indexed images skip embedding and
+vector writes. Pending uncached images still need their local files. Set
+`LIMIT=50` to select a sample again. Reuse targets `QDRANT_COLLECTION_NAME`, or
+the only saved generation when no collection is configured. If several exist,
+use `INDEX_ARGS="--resume RUN_ID"` to choose one; an empty catalogue requires an
+explicit `LIMIT` first.
 
 Open `http://127.0.0.1:8000` after `make run` starts. This command builds the
 frontend and serves it through the backend in the foreground; press Ctrl+C to
@@ -79,7 +87,12 @@ Set `TEST_POSTGRES_URL` to a disposable PostgreSQL database’s direct URL for
 backend tests. Use `make help` to list targets grouped by task and `make check` for
 Python tests, lint checks, and the frontend build. Change the sample with
 `make preview-index LIMIT=20 SCAN_LIMIT=1000` and then the same options on
-`make index`. `INDEX_ARGS` passes extra selection options such as `--seed 7` or
+`make index LIMIT=20 SCAN_LIMIT=1000`. Indexing defaults to 10 images per Gemini request and up to 10
+concurrent batch workers. Use `make index BATCH_SIZE=10 WORKERS=4` to choose
+both limits; `BATCH_SIZE` accepts 1–100 and `WORKERS` accepts 1–10. Large images
+split into smaller requests. `BATCH_SIZE=1` sends one image per request, and
+`WORKERS=1` runs one batch at a time. `LIMIT` controls the sample size independently.
+`INDEX_ARGS` passes extra selection options such as `--seed 7` or
 `--metadata path/to/export.json`; use the direct
 [indexing command](cronjob/README.md#sample-and-index-images) to resume a run.
 

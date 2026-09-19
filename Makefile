@@ -6,12 +6,14 @@ export PATH := $(PATH):$(CURDIR)/data/tools/node_modules/.bin
 UV ?= uv
 BUN ?= $(shell command -v bun 2>/dev/null || printf '%s' '$(CURDIR)/data/tools/node_modules/.bin/bun')
 PORT ?= 8000
-LIMIT ?= 50
-SCAN_LIMIT ?= 1000
+LIMIT ?=
+SCAN_LIMIT ?=
+WORKERS ?= 10
+BATCH_SIZE ?= 10
 INDEX_ARGS ?=
 
 BACKEND_RUN = $(UV) run --package multimodal-backend
-INDEX_COMMAND = $(BACKEND_RUN) cronjob/index_images.py --limit $(LIMIT) --scan-limit $(SCAN_LIMIT) $(INDEX_ARGS)
+INDEX_COMMAND = $(BACKEND_RUN) cronjob/index_images.py $(if $(strip $(LIMIT)),--limit $(LIMIT)) $(if $(strip $(SCAN_LIMIT)),--scan-limit $(SCAN_LIMIT)) --workers $(WORKERS) --batch-size $(BATCH_SIZE) $(INDEX_ARGS)
 
 .PHONY: help setup \
 	build run backend dev generate-client \
@@ -58,9 +60,9 @@ qdrant-down: ## Stop Qdrant, keeping its stored data
 	docker compose stop qdrant
 
 preview-index: ## Preview the sample without embedding requests or Qdrant writes
-	$(INDEX_COMMAND) --dry-run
+	$(INDEX_COMMAND) $(if $(strip $(LIMIT)),,--limit 50) --dry-run
 
-index: ## Index the sample through Gemini; requires .env, local data, and Qdrant
+index: ## Reuse saved selection; set LIMIT to select a new sample
 	$(INDEX_COMMAND)
 
 gold: ## Convert the official silver CSV to gold Parquet

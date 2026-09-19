@@ -12,14 +12,18 @@ from app.core.db import make_engine, migrate
 from app.core.locking import ingestion_lock
 from app.core.telemetry import configure_telemetry
 from app.services.embeddings import GeminiEmbeddings, SearchError
-from app.services.ingestion import create_generation, run_ingestion
+from app.services.ingestion import create_generation, run_ingestion, saved_generation_id
 from app.services.qdrant_store import VectorStore
 from app.services.selection import select_images
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--limit", type=int, help="Images to select; default 50")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="Select this many images (1–1000); omit to reuse the saved selection",
+    )
     parser.add_argument(
         "--scan-limit", type=int, help="Metadata records to scan; default 1000"
     )
@@ -32,6 +36,18 @@ def main(argv=None):
         help="Save catalogue rows without calling Gemini, Qdrant, or R2",
     )
     parser.add_argument("--resume")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=10,
+        help="Concurrent image batches, 1–10; default 10",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=10,
+        help="Maximum images per embedding request, 1–100; default 10",
+    )
     args = parser.parse_args(argv)
     if args.resume and (
         args.dry_run
@@ -40,11 +56,30 @@ def main(argv=None):
         or any(value is not None for value in (args.limit, args.scan_limit, args.seed))
     ):
         parser.error("resume cannot be combined with selection options")
-    args.limit = args.limit if args.limit is not None else 50
+    if (
+        args.limit is None
+        and not args.resume
+        and (
+            args.dry_run
+            or args.prepare_only
+            or args.metadata
+            or args.scan_limit is not None
+            or args.seed is not None
+        )
+    ):
+        parser.error(
+            "selection options require --limit; omit them to reuse the saved selection"
+        )
     args.scan_limit = args.scan_limit if args.scan_limit is not None else 1000
     args.seed = args.seed if args.seed is not None else 42
-    if not 1 <= args.limit <= 1000 or not 1 <= args.scan_limit <= 10000:
+    if (
+        args.limit is not None and not 1 <= args.limit <= 1000
+    ) or not 1 <= args.scan_limit <= 10000:
         parser.error("limit must be 1–1000 and scan-limit must be 1–10000")
+    if not 1 <= args.workers <= 10:
+        parser.error("workers must be 1–10")
+    if not 1 <= args.batch_size <= 100:
+        parser.error("batch-size must be 1–100")
     settings = Settings()
     configure_telemetry(settings, "multimodal-indexer", indexing=True)
     embeddings = GeminiEmbeddings(settings)
@@ -52,7 +87,7 @@ def main(argv=None):
     generation_id = args.resume
     try:
         with ingestion_lock(settings, shared=not args.dry_run):
-            if not args.resume:
+            if args.limit is not None:
                 metadata = args.metadata or sorted(
                     (ROOT / "data/bronze").glob("smg_object_records*.json")
                 )
@@ -73,8 +108,13 @@ def main(argv=None):
                     return 0
             engine = make_engine(settings)
             migrate(settings)
-            if not args.resume:
+            if args.limit is not None:
                 generation_id = create_generation(engine, settings, selected, report)
+            elif generation_id is None:
+                generation_id = saved_generation_id(engine, settings)
+                print(
+                    "Reusing saved selection; skipping metadata sampling.", flush=True
+                )
             print(f"Run ID: {generation_id}", flush=True)
             if args.prepare_only:
                 print(
@@ -90,6 +130,8 @@ def main(argv=None):
                 embeddings,
                 vectors,
                 progress=lambda message: print(message, flush=True),
+                workers=args.workers,
+                batch_size=args.batch_size,
             )
             print(json.dumps(result), flush=True)
             return 0
