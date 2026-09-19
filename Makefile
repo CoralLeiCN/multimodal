@@ -62,3 +62,21 @@ gold: ## Convert the official silver CSV to gold Parquet
 
 match-images: ## Create the optional image manifest and coverage report
 	$(UV) run cronjob/match_images.py
+
+.PHONY: agent-api agent-worker agent-test agent-lock agent-deploy
+
+agent-api: build ## Serve Image Studio independently of collection search
+	$(UV) run --package multimodal-backend uvicorn app.services.agent.application:create_agent_app --factory --host 127.0.0.1 --port $(PORT)
+
+agent-worker: ## Process queued image tasks using Modal sandboxes
+	$(UV) run --package multimodal-backend python -m app.services.agent.worker
+
+agent-test: ## Test agent isolation, budgets, recovery, and API with fake cloud services
+	$(UV) run pytest backend/tests/test_agent.py backend/tests/test_chat.py
+
+agent-lock: ## Export locked dependencies for the Modal images
+	$(UV) export --only-group agent-runtime --no-emit-project --no-hashes --no-header --output-file deploy/agent-requirements.txt
+	$(UV) export --package multimodal-backend --no-dev --no-emit-workspace --no-hashes --no-header --output-file deploy/service-requirements.txt
+
+agent-deploy: build ## Deploy configured cloud creation services to Modal
+	$(UV) run --package multimodal-backend modal deploy deploy/modal_app.py

@@ -73,6 +73,20 @@ and the frontend build. Change the sample with
 `--metadata path/to/export.json`; use the direct
 [indexing command](cronjob/README.md#sample-and-index-images) to resume a run.
 
+## Brand Image Studio
+
+Open `/create` to prepare brand profiles and generate images from descriptions and
+uploaded references. The agent runs in Modal Sandboxes, uses Gemini / Nano Banana,
+and sends execution traces to Pydantic Logfire. This module works independently of
+the collection index. Creation is disabled until configured.
+
+See [Image Studio setup](docs/image_agent_setup.md) for local profile preparation,
+cloud credentials, deployment, and validation. `make agent-api` serves the studio
+without starting search services; `make agent-deploy` builds and deploys configured
+Modal services. Cloud generation requires PostgreSQL, private object storage, and
+provider credentials. The [design](docs/image_agent_design.md) has a
+[Chinese companion](docs/image_agent_design.CN.md).
+
 ## Collection Explorer
 
 The prototype has a React frontend and dedicated FastAPI search endpoints.
@@ -153,3 +167,16 @@ images. These generated outputs can be removed after review and rebuilt on deman
 The extracted thumbnails live in `data/images/`.
 See [the matching script documentation](cronjob/README.md)
 for output fields and options.
+
+
+The conversation backend supports brand-bound chats, collection image IDs, and
+follow-up edits in Modal sandboxes. See [Brand chat agent backend](docs/chat_agent_backend.md)
+for endpoints, configuration, recovery, and verification. Chat frontend integration
+is deferred.
+
+
+Gemini Flash handles chat and compiles image tasks in the trusted backend. Modal
+sandboxes execute source lookup, Nano Banana generation, evaluation, and result return.
+Current user instructions override conflicting brand defaults for that task; the
+saved brand remains unchanged. Pure chat does not create a sandbox. Collection image
+IDs can resolve through the local catalogue or a configured trusted online API.

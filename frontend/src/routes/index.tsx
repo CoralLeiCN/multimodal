@@ -1,4 +1,5 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
 import {
   ArrowDown,
   ArrowRight,
@@ -234,6 +235,9 @@ export function CollectionPage() {
       <ChatPanel />
       <div className="app-shell">
         <header className="site-header">
+          <Link to="/create" className="header-link">
+            <Sparkles size={15} /> Image Studio
+          </Link>
           <a className="brand" href="/" aria-label="Collection Explorer home">
             <span className="brand-mark">
               c<span>e</span>

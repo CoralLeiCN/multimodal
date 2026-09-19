@@ -2,7 +2,7 @@
 
 import { type Client, formDataBodySerializer, type Options as Options2, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { BrowseImagesData, BrowseImagesErrors, BrowseImagesResponses, FilterOptionsData, FilterOptionsErrors, FilterOptionsResponses, ImageDetailData, ImageDetailErrors, ImageDetailResponses, ImageFileData, ImageFileErrors, ImageFileResponses, SearchImageData, SearchImageErrors, SearchImageResponses, SearchTextData, SearchTextErrors, SearchTextResponses, SimilarImagesData, SimilarImagesErrors, SimilarImagesResponses, StatusData, StatusErrors, StatusResponses } from './types.gen';
+import type { AgentStatusData, AgentStatusResponses, AnswerRunData, AnswerRunErrors, AnswerRunResponses, AssetFileData, AssetFileErrors, AssetFileResponses, BrandsData, BrandsResponses, BrowseImagesData, BrowseImagesErrors, BrowseImagesResponses, CancelRunData, CancelRunErrors, CancelRunResponses, ConversationsData, ConversationsResponses, CreateBrandData, CreateBrandErrors, CreateBrandResponses, CreateConversationData, CreateConversationErrors, CreateConversationResponses, CreateRunData, CreateRunErrors, CreateRunResponses, EventsData, EventsErrors, EventsResponses, FilterOptionsData, FilterOptionsErrors, FilterOptionsResponses, ImageDetailData, ImageDetailErrors, ImageDetailResponses, ImageFileData, ImageFileErrors, ImageFileResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, ReadConversationData, ReadConversationErrors, ReadConversationResponses, ReadRunData, ReadRunErrors, ReadRunResponses, RunsData, RunsResponses, SearchImageData, SearchImageErrors, SearchImageResponses, SearchTextData, SearchTextErrors, SearchTextResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SimilarImagesData, SimilarImagesErrors, SimilarImagesResponses, StatusData, StatusErrors, StatusResponses, UploadData, UploadErrors, UploadResponses, VersionBrandData, VersionBrandErrors, VersionBrandResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -76,6 +76,153 @@ export const searchImage = <ThrowOnError extends boolean = false>(options: Optio
     ...options,
     headers: {
         'Content-Type': null,
+        ...options.headers
+    }
+});
+
+/**
+ * Agent Status
+ */
+export const agentStatus = <ThrowOnError extends boolean = false>(options?: Options<AgentStatusData, ThrowOnError>) => (options?.client ?? client).get<AgentStatusResponses, unknown, ThrowOnError>({ url: '/api/v1/agent/status', ...options });
+
+/**
+ * Logout
+ */
+export const logout = <ThrowOnError extends boolean = false>(options?: Options<LogoutData, ThrowOnError>) => (options?.client ?? client).delete<LogoutResponses, unknown, ThrowOnError>({ url: '/api/v1/agent/session', ...options });
+
+/**
+ * Login
+ */
+export const login = <ThrowOnError extends boolean = false>(options: Options<LoginData, ThrowOnError>) => (options.client ?? client).post<LoginResponses, LoginErrors, ThrowOnError>({
+    url: '/api/v1/agent/session',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Upload
+ */
+export const upload = <ThrowOnError extends boolean = false>(options: Options<UploadData, ThrowOnError>) => (options.client ?? client).post<UploadResponses, UploadErrors, ThrowOnError>({
+    ...formDataBodySerializer,
+    url: '/api/v1/agent/assets',
+    ...options,
+    headers: {
+        'Content-Type': null,
+        ...options.headers
+    }
+});
+
+/**
+ * Asset File
+ */
+export const assetFile = <ThrowOnError extends boolean = false>(options: Options<AssetFileData, ThrowOnError>) => (options.client ?? client).get<AssetFileResponses, AssetFileErrors, ThrowOnError>({ url: '/api/v1/agent/assets/{asset_id}/file', ...options });
+
+/**
+ * Brands
+ */
+export const brands = <ThrowOnError extends boolean = false>(options?: Options<BrandsData, ThrowOnError>) => (options?.client ?? client).get<BrandsResponses, unknown, ThrowOnError>({ url: '/api/v1/agent/brands', ...options });
+
+/**
+ * Create Brand
+ */
+export const createBrand = <ThrowOnError extends boolean = false>(options: Options<CreateBrandData, ThrowOnError>) => (options.client ?? client).post<CreateBrandResponses, CreateBrandErrors, ThrowOnError>({
+    url: '/api/v1/agent/brands',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Version Brand
+ */
+export const versionBrand = <ThrowOnError extends boolean = false>(options: Options<VersionBrandData, ThrowOnError>) => (options.client ?? client).post<VersionBrandResponses, VersionBrandErrors, ThrowOnError>({
+    url: '/api/v1/agent/brands/{brand_id}/versions',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Runs
+ */
+export const runs = <ThrowOnError extends boolean = false>(options?: Options<RunsData, ThrowOnError>) => (options?.client ?? client).get<RunsResponses, unknown, ThrowOnError>({ url: '/api/v1/agent/runs', ...options });
+
+/**
+ * Create Run
+ */
+export const createRun = <ThrowOnError extends boolean = false>(options: Options<CreateRunData, ThrowOnError>) => (options.client ?? client).post<CreateRunResponses, CreateRunErrors, ThrowOnError>({
+    url: '/api/v1/agent/runs',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Read Run
+ */
+export const readRun = <ThrowOnError extends boolean = false>(options: Options<ReadRunData, ThrowOnError>) => (options.client ?? client).get<ReadRunResponses, ReadRunErrors, ThrowOnError>({ url: '/api/v1/agent/runs/{run_id}', ...options });
+
+/**
+ * Cancel Run
+ */
+export const cancelRun = <ThrowOnError extends boolean = false>(options: Options<CancelRunData, ThrowOnError>) => (options.client ?? client).post<CancelRunResponses, CancelRunErrors, ThrowOnError>({ url: '/api/v1/agent/runs/{run_id}/cancel', ...options });
+
+/**
+ * Answer Run
+ */
+export const answerRun = <ThrowOnError extends boolean = false>(options: Options<AnswerRunData, ThrowOnError>) => (options.client ?? client).post<AnswerRunResponses, AnswerRunErrors, ThrowOnError>({
+    url: '/api/v1/agent/runs/{run_id}/input',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Events
+ */
+export const events = <ThrowOnError extends boolean = false>(options: Options<EventsData, ThrowOnError>) => (options.client ?? client).get<EventsResponses, EventsErrors, ThrowOnError>({ url: '/api/v1/agent/runs/{run_id}/events', ...options });
+
+/**
+ * Conversations
+ */
+export const conversations = <ThrowOnError extends boolean = false>(options?: Options<ConversationsData, ThrowOnError>) => (options?.client ?? client).get<ConversationsResponses, unknown, ThrowOnError>({ url: '/api/v1/agent/conversations', ...options });
+
+/**
+ * Create Conversation
+ */
+export const createConversation = <ThrowOnError extends boolean = false>(options: Options<CreateConversationData, ThrowOnError>) => (options.client ?? client).post<CreateConversationResponses, CreateConversationErrors, ThrowOnError>({
+    url: '/api/v1/agent/conversations',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Read Conversation
+ */
+export const readConversation = <ThrowOnError extends boolean = false>(options: Options<ReadConversationData, ThrowOnError>) => (options.client ?? client).get<ReadConversationResponses, ReadConversationErrors, ThrowOnError>({ url: '/api/v1/agent/conversations/{conversation_id}', ...options });
+
+/**
+ * Send Message
+ */
+export const sendMessage = <ThrowOnError extends boolean = false>(options: Options<SendMessageData, ThrowOnError>) => (options.client ?? client).post<SendMessageResponses, SendMessageErrors, ThrowOnError>({
+    url: '/api/v1/agent/conversations/{conversation_id}/messages',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
         ...options.headers
     }
 });

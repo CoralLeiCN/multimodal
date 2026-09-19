@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-router"
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
+import { CreationStudio } from "./components/creation/studio"
 import { CollectionPage } from "./routes/index"
 import "./styles.css"
 
@@ -20,7 +21,12 @@ const indexRoute = createRoute({
   path: "/",
   component: CollectionPage,
 })
-const router = createRouter({ routeTree: rootRoute.addChildren([indexRoute]) })
+const creationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/create",
+  component: CreationStudio,
+})
+const router = createRouter({ routeTree: rootRoute.addChildren([indexRoute, creationRoute]) })
 
 declare module "@tanstack/react-router" {
   interface Register {

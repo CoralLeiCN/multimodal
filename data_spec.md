@@ -202,3 +202,37 @@ into an empty PostgreSQL catalogue in one transaction, preserving all catalogue
 fields and identifiers. It validates the source, verifies its active Qdrant
 collection, and compares every copied table's contents before committing.
 It neither generates embeddings nor updates Qdrant. Original files remain intact.
+
+## Agent inputs and generated assets
+
+Brand reference uploads, subject uploads, and generated images are separate from
+the official collection layers and search index. Cloud agent assets use private
+object storage; local preparation and tests use ignored `data/agent/assets/`.
+Each asset records its checksum, MIME type, dimensions, workspace, and source.
+Generated assets record the run, step, generation model, and reference asset IDs.
+Immutable brand versions retain their uploaded reference IDs.
+
+Agent tasks use a separate PostgreSQL database in production, with SQLite only for
+local preparation and tests. Task inputs, checkpoints, evaluations, and provider
+usage records persist there; the sandbox filesystem is temporary. Chat turns can
+import a collection image explicitly requested by ID into private agent storage.
+The bridge preserves source rights metadata; it does not implement a rights-approval
+workflow. Operators must use assets authorized for their intended purpose.
+
+Only task metadata is exported to tracing by default. Unreferenced task objects older
+than 24 hours may be cleaned up; referenced inputs and outputs are retained. See
+[Image Studio setup](docs/image_agent_setup.md) for storage and execution limits.
+
+
+## Conversation image references
+
+The sandbox requests search `image_id` resolution through the trusted gateway.
+The gateway uses read-only SQLite for the active local catalogue, or the configured
+online collection API. Online responses are bounded and downloaded from fixed API
+routes without following redirects. It checks the local path and checksum, copies the
+image into private agent storage, and retains the collection generation, record/image
+identifiers, title, licence, copyright, and credit. Generated outputs link their
+input asset IDs so subsequent edits preserve provenance. This lookup does not assess
+derivative-use permission; the operator must select images authorized for the intended
+use. A policy enforcing rights approval is not part of the current prototype.
+See [Brand chat agent backend](docs/chat_agent_backend.md) for the API and limits.

@@ -123,6 +123,15 @@ for local project credentials, cloud export, and environment labels.
 
 ## Acceptance criteria
 
+Image Studio uses a separate trusted gateway for Gemini planning, evaluation, and
+Nano Banana generation. Its Modal Sandbox receives a scoped task token; provider
+credentials stay in the gateway. Model identifiers, input limits, call reservation,
+and tracing configuration are documented in [Image Studio setup](image_agent_setup.md)
+and [the agent design](image_agent_design.md). Image generation uses one SDK attempt
+per call to avoid silently repeating a paid request after an uncertain response.
+Brand descriptions and references are included in model inputs but excluded from
+configured Gen AI trace content capture.
+
 - The locked environment imports `genai` from `google` successfully.
 - A script and a notebook can construct the client with the configured key.
 - The model-list check completes using the intended project's credentials.
@@ -131,3 +140,16 @@ for local project credentials, cloud export, and environment labels.
 - Committed examples and saved notebook outputs contain no key values.
 
 Verified against Google's documentation and the local SDK on 19 September 2026.
+
+
+The conversation backend supports brand-bound chats, collection image IDs, and
+follow-up edits in Modal sandboxes. See [Brand chat agent backend](chat_agent_backend.md)
+for endpoints, configuration, recovery, and verification. Chat frontend integration
+is deferred.
+
+
+Gemini Flash handles chat and compiles image tasks in the trusted backend. Modal
+sandboxes execute source lookup, Nano Banana generation, evaluation, and result return.
+Current user instructions override conflicting brand defaults for that task; the
+saved brand remains unchanged. Pure chat does not create a sandbox. Collection image
+IDs can resolve through the local catalogue or a configured trusted online API.

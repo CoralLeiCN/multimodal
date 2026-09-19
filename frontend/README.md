@@ -5,6 +5,13 @@ browsing, attribution, and similar-image search. The layout follows the
 [Full Stack FastAPI Template](https://github.com/fastapi/full-stack-fastapi-template).
 Reusable components use Radix and the shadcn/ui component pattern.
 
+Image Studio at `/create` provides workspace sign-in, versioned brand profiles,
+reference uploads, generation progress, clarification, cancellation, downloads,
+and follow-up edits. Its components and API helpers live in `src/components/creation/`.
+The same build works with the standalone agent API; see
+[Image Studio setup](../docs/image_agent_setup.md). Creation tests in
+`tests/creation.spec.ts` mock cloud responses and do not call paid models.
+
 Year-range inputs and place/category dropdowns filter browsing and every search
 mode. Dropdowns use `GET /api/v1/filters`; applying filters repeats the current
 search or refreshes the browse grid. Clearing filters keeps the current query.

@@ -182,6 +182,27 @@ Stop the API during in-place updates and restart it after successful ingestion.
 Failed updates require resume before that collection becomes available again.
 See [setup and recovery](../cronjob/README.md#permanent-collection).
 
+## Image creation agent
+
+The `/api/v1/agent` routes expose authenticated brand profiles, uploads, immutable
+versions, asynchronous runs, SSE progress, cancellation, and follow-up edits.
+They use a separate database and storage namespace from the collection catalogue.
+The standalone factory `app.services.agent.application:create_agent_app` starts
+without Qdrant or collection migrations. See [setup and API behavior](../docs/image_agent_setup.md)
+and the [design](../docs/image_agent_design.md).
+
+
+The conversation backend supports brand-bound chats, collection image IDs, and
+follow-up edits in Modal sandboxes. See [Brand chat agent backend](../docs/chat_agent_backend.md)
+for endpoints, configuration, recovery, and verification. Chat frontend integration
+is deferred.
+
+
+Gemini Flash handles chat and compiles image tasks in the trusted backend. Modal
+sandboxes execute source lookup, Nano Banana generation, evaluation, and result return.
+Current user instructions override conflicting brand defaults for that task; the
+saved brand remains unchanged. Pure chat does not create a sandbox. Collection image
+IDs can resolve through the local catalogue or a configured trusted online API.
 ## Neon collaboration
 
 See the [collaborator setup](../docs/neon_setup.md). PostgreSQL stores the catalogue and

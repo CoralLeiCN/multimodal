@@ -16,7 +16,10 @@ dependencies = [
     "pillow>=11,<13",
     "python-multipart>=0.0.20,<1",
     "httpx>=0.28,<1",
-    "logfire[fastapi]>=4.41,<5",
+    "modal>=1.0,<2",
+    "logfire[fastapi,google-genai]>=4.41,<5",
+    "boto3>=1.35,<2",
+    "opentelemetry-proto>=1.30,<2",
 ]
 
 [build-system]

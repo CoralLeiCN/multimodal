@@ -5,6 +5,16 @@ export type ClientOptions = {
 };
 
 /**
+ * Answer
+ */
+export type Answer = {
+    /**
+     * Answer
+     */
+    answer: string;
+};
+
+/**
  * AssociationRead
  */
 export type AssociationRead = {
@@ -99,6 +109,50 @@ export type BodySearchImage = {
 };
 
 /**
+ * Body_upload
+ */
+export type BodyUpload = {
+    /**
+     * File
+     */
+    file: Blob | File;
+    /**
+     * Kind
+     */
+    kind: 'reference' | 'subject';
+};
+
+/**
+ * BrandInput
+ */
+export type BrandInput = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Description
+     */
+    description: string;
+    /**
+     * Colors
+     */
+    colors?: string;
+    /**
+     * Preserve
+     */
+    preserve?: string;
+    /**
+     * Avoid
+     */
+    avoid?: string;
+    /**
+     * Reference Asset Ids
+     */
+    reference_asset_ids?: Array<string>;
+};
+
+/**
  * BrowseResponse
  */
 export type BrowseResponse = {
@@ -122,6 +176,20 @@ export type BrowseResponse = {
      * Next Cursor
      */
     next_cursor?: string | null;
+};
+
+/**
+ * ConversationInput
+ */
+export type ConversationInput = {
+    /**
+     * Brand Version
+     */
+    brand_version: string;
+    /**
+     * Title
+     */
+    title?: string;
 };
 
 /**
@@ -165,6 +233,16 @@ export type FilterOptions = {
 };
 
 /**
+ * HTTPValidationError
+ */
+export type HttpValidationError = {
+    /**
+     * Detail
+     */
+    detail?: Array<ValidationError>;
+};
+
+/**
  * ImageRead
  */
 export type ImageRead = {
@@ -199,6 +277,30 @@ export type ImageRead = {
 };
 
 /**
+ * Login
+ */
+export type Login = {
+    /**
+     * Access Token
+     */
+    access_token: string;
+};
+
+/**
+ * MessageInput
+ */
+export type MessageInput = {
+    /**
+     * Content
+     */
+    content: string;
+    /**
+     * Subject Asset Id
+     */
+    subject_asset_id?: string | null;
+};
+
+/**
  * MetadataFilters
  */
 export type MetadataFilters = {
@@ -222,6 +324,48 @@ export type MetadataFilters = {
      * Category
      */
     category?: Array<string>;
+};
+
+/**
+ * RunInput
+ */
+export type RunInput = {
+    /**
+     * Brand Version
+     */
+    brand_version: string;
+    /**
+     * Prompt
+     */
+    prompt: string;
+    /**
+     * Subject Asset Ids
+     */
+    subject_asset_ids?: Array<string>;
+    /**
+     * Aspect Ratio
+     */
+    aspect_ratio?: '1:1' | '4:3' | '3:4' | '16:9' | '9:16';
+    /**
+     * Candidate Count
+     */
+    candidate_count?: number;
+    /**
+     * Subject Strength
+     */
+    subject_strength?: 'low' | 'medium' | 'high';
+    /**
+     * Style Strength
+     */
+    style_strength?: 'low' | 'medium' | 'high';
+    /**
+     * Parent Run Id
+     */
+    parent_run_id?: string | null;
+    /**
+     * Selected Asset Id
+     */
+    selected_asset_id?: string | null;
 };
 
 /**
@@ -304,6 +448,34 @@ export type TextQuery = {
      */
     limit?: number;
     filters?: MetadataFilters;
+};
+
+/**
+ * ValidationError
+ */
+export type ValidationError = {
+    /**
+     * Location
+     */
+    loc: Array<string | number>;
+    /**
+     * Message
+     */
+    msg: string;
+    /**
+     * Error Type
+     */
+    type: string;
+    /**
+     * Input
+     */
+    input?: unknown;
+    /**
+     * Context
+     */
+    ctx?: {
+        [key: string]: unknown;
+    };
 };
 
 export type StatusData = {
@@ -770,3 +942,430 @@ export type SearchImageResponses = {
 };
 
 export type SearchImageResponse = SearchImageResponses[keyof SearchImageResponses];
+
+export type AgentStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/agent/status';
+};
+
+export type AgentStatusResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type LogoutData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/agent/session';
+};
+
+export type LogoutResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type LoginData = {
+    body: Login;
+    path?: never;
+    query?: never;
+    url: '/api/v1/agent/session';
+};
+
+export type LoginErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type LoginError = LoginErrors[keyof LoginErrors];
+
+export type LoginResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type UploadData = {
+    body: BodyUpload;
+    path?: never;
+    query?: never;
+    url: '/api/v1/agent/assets';
+};
+
+export type UploadErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UploadError = UploadErrors[keyof UploadErrors];
+
+export type UploadResponses = {
+    /**
+     * Successful Response
+     */
+    201: unknown;
+};
+
+export type AssetFileData = {
+    body?: never;
+    path: {
+        /**
+         * Asset Id
+         */
+        asset_id: string;
+    };
+    query?: never;
+    url: '/api/v1/agent/assets/{asset_id}/file';
+};
+
+export type AssetFileErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AssetFileError = AssetFileErrors[keyof AssetFileErrors];
+
+export type AssetFileResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type BrandsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/agent/brands';
+};
+
+export type BrandsResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type CreateBrandData = {
+    body: BrandInput;
+    path?: never;
+    query?: never;
+    url: '/api/v1/agent/brands';
+};
+
+export type CreateBrandErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateBrandError = CreateBrandErrors[keyof CreateBrandErrors];
+
+export type CreateBrandResponses = {
+    /**
+     * Successful Response
+     */
+    201: unknown;
+};
+
+export type VersionBrandData = {
+    body: BrandInput;
+    path: {
+        /**
+         * Brand Id
+         */
+        brand_id: string;
+    };
+    query?: never;
+    url: '/api/v1/agent/brands/{brand_id}/versions';
+};
+
+export type VersionBrandErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VersionBrandError = VersionBrandErrors[keyof VersionBrandErrors];
+
+export type VersionBrandResponses = {
+    /**
+     * Successful Response
+     */
+    201: unknown;
+};
+
+export type RunsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/agent/runs';
+};
+
+export type RunsResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type CreateRunData = {
+    body: RunInput;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'idempotency-key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/agent/runs';
+};
+
+export type CreateRunErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateRunError = CreateRunErrors[keyof CreateRunErrors];
+
+export type CreateRunResponses = {
+    /**
+     * Successful Response
+     */
+    202: unknown;
+};
+
+export type ReadRunData = {
+    body?: never;
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+    };
+    query?: never;
+    url: '/api/v1/agent/runs/{run_id}';
+};
+
+export type ReadRunErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ReadRunError = ReadRunErrors[keyof ReadRunErrors];
+
+export type ReadRunResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type CancelRunData = {
+    body?: never;
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+    };
+    query?: never;
+    url: '/api/v1/agent/runs/{run_id}/cancel';
+};
+
+export type CancelRunErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CancelRunError = CancelRunErrors[keyof CancelRunErrors];
+
+export type CancelRunResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type AnswerRunData = {
+    body: Answer;
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+    };
+    query?: never;
+    url: '/api/v1/agent/runs/{run_id}/input';
+};
+
+export type AnswerRunErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AnswerRunError = AnswerRunErrors[keyof AnswerRunErrors];
+
+export type AnswerRunResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type EventsData = {
+    body?: never;
+    headers?: {
+        /**
+         * Last-Event-Id
+         */
+        'last-event-id'?: string | null;
+    };
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+    };
+    query?: never;
+    url: '/api/v1/agent/runs/{run_id}/events';
+};
+
+export type EventsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type EventsError = EventsErrors[keyof EventsErrors];
+
+export type EventsResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type ConversationsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/agent/conversations';
+};
+
+export type ConversationsResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type CreateConversationData = {
+    body: ConversationInput;
+    path?: never;
+    query?: never;
+    url: '/api/v1/agent/conversations';
+};
+
+export type CreateConversationErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateConversationError = CreateConversationErrors[keyof CreateConversationErrors];
+
+export type CreateConversationResponses = {
+    /**
+     * Successful Response
+     */
+    201: unknown;
+};
+
+export type ReadConversationData = {
+    body?: never;
+    path: {
+        /**
+         * Conversation Id
+         */
+        conversation_id: string;
+    };
+    query?: never;
+    url: '/api/v1/agent/conversations/{conversation_id}';
+};
+
+export type ReadConversationErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ReadConversationError = ReadConversationErrors[keyof ReadConversationErrors];
+
+export type ReadConversationResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type SendMessageData = {
+    body: MessageInput;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'idempotency-key': string;
+    };
+    path: {
+        /**
+         * Conversation Id
+         */
+        conversation_id: string;
+    };
+    query?: never;
+    url: '/api/v1/agent/conversations/{conversation_id}/messages';
+};
+
+export type SendMessageErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SendMessageError = SendMessageErrors[keyof SendMessageErrors];
+
+export type SendMessageResponses = {
+    /**
+     * Successful Response
+     */
+    202: unknown;
+};
