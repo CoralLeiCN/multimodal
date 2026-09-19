@@ -42,7 +42,8 @@ disable the apply button and show a correction message.
 Provide clear states for an empty index, unavailable search, invalid uploads,
 missing images, and zero results. Keep model names, vector dimensions, and local
 filesystem paths in operator diagnostics. The user interface should explain that
-uploaded query images are sent to Google's embedding service.
+uploaded query images are sent to Google to generate embeddings, which the app
+uses to find similar collection images. Uploaded images are not added to the collection.
 
 ## Technology stack and project layout
 

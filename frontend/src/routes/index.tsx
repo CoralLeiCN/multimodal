@@ -362,7 +362,8 @@ export function CollectionPage() {
             </form>
             {mode === "image" && (
               <p className="upload-notice">
-                Your query image is sent to Google for search and is not added to this collection.
+                Your image is sent to Google to generate an embedding. We use that embedding to
+                find similar images in this collection. Your image is not added to the collection.
               </p>
             )}
           </div>
