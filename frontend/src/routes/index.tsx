@@ -37,6 +37,12 @@ const suggestions = [
   "Medical tools",
 ]
 
+const searchExamples = ["a brass microscope", "an early computer"]
+
+function randomSuggestion() {
+  return searchExamples[Math.floor(Math.random() * searchExamples.length)]
+}
+
 type SearchIntent =
   | { type: "text"; text: string }
   | { type: "image"; file: File }
@@ -67,7 +73,8 @@ export function CollectionPage() {
     getNextPageParam: (page) => page.next_cursor || undefined,
     enabled: (health.data?.indexed_images ?? 0) > 0,
   })
-  const [query, setQuery] = useState("")
+  const [query, setQuery] = useState(randomSuggestion)
+  const [isExample, setIsExample] = useState(true)
   const [mode, setMode] = useState<"text" | "image">("text")
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState("")
@@ -121,6 +128,7 @@ export function CollectionPage() {
   function searchFor(text: string) {
     setMode("text")
     setQuery(text)
+    setIsExample(false)
     if (text.trim()) runSearch({ type: "text", text: text.trim() })
   }
 
@@ -190,8 +198,9 @@ export function CollectionPage() {
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    if (mode === "text") searchFor(query)
-    else if (file) runSearch({ type: "image", file })
+    if (mode === "text") {
+      if (query.trim()) runSearch({ type: "text", text: query.trim() })
+    } else if (file) runSearch({ type: "image", file })
   }
 
   function findSimilar(image: ImageRead) {
@@ -204,7 +213,8 @@ export function CollectionPage() {
     setBusy(false)
     setResults(null)
     setError("")
-    setQuery("")
+    setQuery(randomSuggestion())
+    setIsExample(true)
     setFile(null)
     setLastSearch(null)
   }
@@ -250,7 +260,6 @@ export function CollectionPage() {
               EXPLORER
             </span>
           </a>
-          <div className="header-center">SCIENCE MUSEUM GROUP</div>
           <a
             className="header-link"
             href="https://collection.sciencemuseumgroup.org.uk/"
@@ -269,20 +278,12 @@ export function CollectionPage() {
               </span>
               <span className="sample-pill">
                 <span />
-                {health.data?.indexed_images ?? 0} images · sample collection
+                {health.data?.indexed_images ?? 0} images
               </span>
             </div>
             <div className="hero-heading">
-              <h1>
-                Follow your
-                <br />
-                <em>curiosity.</em>
-              </h1>
-              <p>
-                A world of objects, ideas, and discoveries.
-                <br />
-                Describe what you’re looking for, or start with an image.
-              </p>
+              <h1 className="collection-title">Science Museum Group datasets.</h1>
+              <p>Multimodal search powered by the Gemini embedding model.</p>
             </div>
             <div className="search-panel">
               <div className="search-modes" role="tablist" aria-label="Search method">
@@ -294,7 +295,7 @@ export function CollectionPage() {
                   className={mode === "text" ? "active" : ""}
                 >
                   <Search size={16} />
-                  Search with words
+                  Search with text
                 </button>
                 <button
                   type="button"
@@ -318,9 +319,19 @@ export function CollectionPage() {
                       id="search-query"
                       ref={textInput}
                       value={query}
-                      onChange={(event) => setQuery(event.target.value)}
+                      className={isExample ? "example-query" : undefined}
+                      onFocus={() => {
+                        if (isExample) {
+                          setQuery("")
+                          setIsExample(false)
+                        }
+                      }}
+                      onChange={(event) => {
+                        setQuery(event.target.value)
+                        setIsExample(false)
+                      }}
                       maxLength={2000}
-                      placeholder="Try ‘a brass microscope’ or ‘an early computer’"
+                      placeholder="Describe what you’re looking for"
                       autoComplete="off"
                     />
                   </div>

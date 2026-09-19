@@ -80,12 +80,6 @@ button:not(:disabled):active {
 .brand-mark span {
   color: #718143;
 }
-.header-center {
-  font-size: 10px;
-  letter-spacing: 2.5px;
-  margin-left: -45px;
-  color: #676c61;
-}
 .header-link {
   display: flex;
   align-items: center;
@@ -150,6 +144,12 @@ button:not(:disabled):active {
   font-weight: 400;
   color: #6e7d55;
 }
+.hero h1.collection-title {
+  font-family: inherit;
+  font-size: clamp(24px, 2.5vw, 32px);
+  letter-spacing: normal;
+  line-height: 1.3;
+}
 .hero-heading p {
   font-size: 14px;
   line-height: 1.9;
@@ -207,7 +207,8 @@ button:not(:disabled):active {
   height: 45px;
   outline: none;
 }
-.query-input input::placeholder {
+.query-input input::placeholder,
+.query-input input.example-query {
   color: #8e9387;
 }
 .button {
@@ -750,9 +751,6 @@ footer p {
   .site-header {
     height: 83px;
   }
-  .header-center {
-    display: none;
-  }
   .hero {
     padding: 30px 0;
   }
@@ -1242,9 +1240,6 @@ footer p {
 }
 .collection-workspace:has(.chat-toggle[aria-expanded="true"]) .hero-heading {
   flex-wrap: wrap;
-}
-.collection-workspace:has(.chat-toggle[aria-expanded="true"]) .header-center {
-  display: none;
 }
 .collection-workspace:has(.chat-toggle[aria-expanded="true"]) .filter-fields {
   grid-template-columns: repeat(2, minmax(0, 1fr));

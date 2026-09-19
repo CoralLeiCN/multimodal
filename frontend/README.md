@@ -5,6 +5,15 @@ browsing, attribution, and similar-image search. The layout follows the
 [Full Stack FastAPI Template](https://github.com/fastapi/full-stack-fastapi-template).
 Reusable components use Radix and the shadcn/ui component pattern.
 
+The homepage introduces multimodal search across Science Museum Group datasets
+and displays the total indexed image count. Collection Explorer is an independent
+project with no affiliation to the Science Museum Group.
+
+The text search field randomly starts with “a brass microscope” or “an early
+computer” in grey, ready to submit with Explore. Focusing the field clears the
+example so users can type their own query. Later focus changes preserve typed
+queries. Returning to the collection selects a fresh random example.
+
 Image Studio at `/create` provides workspace sign-in, versioned brand profiles,
 reference uploads, generation progress, clarification, cancellation, downloads,
 and follow-up edits. Its components and API helpers live in `src/components/creation/`.
