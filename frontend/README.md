@@ -75,7 +75,9 @@ bun run dev
 ```
 
 Open `http://127.0.0.1:5173`. Vite forwards `/api` requests to the backend on port
-8000. For a single local application, run `bun run build` and restart the backend;
+8000, preserving the browser's Host header so workspace sign-in passes the backend's
+same-origin check. Enter `AGENT_ACCESS_TOKEN` at `/create` on port 5173.
+For a single local application, run `bun run build` and restart the backend;
 FastAPI serves that build at `http://127.0.0.1:8000`.
 
 Bun is installed in `data/tools/node_modules/.bin/` in this workspace. To use that
