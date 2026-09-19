@@ -530,6 +530,9 @@ def test_chat_provider_interactions_has_no_retention_or_retries(agent, monkeypat
 
     monkeypatch.setattr(module.genai, "Client", Client)
     provider = module.GeminiProvider.__new__(module.GeminiProvider)
+    from app.services.agent.prompts import load_prompts
+
+    provider.prompts = load_prompts()
     provider.settings = agent[0].settings
     result, _ = provider.chat(
         {"messages": [{"role": "user", "content": "Hello"}]}, {"description": "Brand"}
@@ -566,6 +569,9 @@ def test_locked_interactions_sdk_sends_one_request_on_server_error(agent, monkey
 
     monkeypatch.setattr(module.genai, "Client", client)
     provider = module.GeminiProvider.__new__(module.GeminiProvider)
+    from app.services.agent.prompts import load_prompts
+
+    provider.prompts = load_prompts()
     provider.settings = agent[0].settings
     from google.genai._gaos.lib.compat_errors import InternalServerError
 
@@ -746,3 +752,120 @@ def test_record_resolves_to_uuid_before_online_fetch(agent, monkeypatch):
         lookup.read_collection_image(svc.settings, "co41679")
     assert error.value.code == "collection_record_missing"
     assert seen == ["resolved-uuid"]
+
+
+def test_evaluation_rejection_preserves_image_and_safe_diagnostics(
+    agent, conversation, caplog
+):
+    from google.genai.errors import ClientError
+
+    class UnavailableEvaluator(ChatProvider):
+        def evaluate(self, brief, brand, assets):
+            raise ClientError(
+                404,
+                {
+                    "error": {
+                        "message": "private-provider-message",
+                        "status": "NOT_FOUND",
+                    }
+                },
+            )
+
+    provider = UnavailableEvaluator(
+        [
+            execute(),
+            {"action": "reply", "message": "Image saved; evaluation unavailable."},
+        ]
+    )
+    run_id, worker = submit(agent, conversation, provider)
+    svc = agent[0]
+    with Session(svc.engine) as session:
+        claims = verify(
+            svc.settings, task_token(svc.settings, svc.run(session, run_id)), "task"
+        )
+    with pytest.raises(httpx.HTTPStatusError):
+        run_agent(HTTPClient(svc, provider, claims))
+    failed = svc.read_run(run_id)
+    assert failed["error_code"] == "provider_model_unavailable"
+    with Session(svc.engine) as session:
+        failed["result"] = svc.run(session, run_id).result
+    assert failed["result"]["failed_operation"] == "evaluate"
+    assert failed["result"]["diagnostic"]["http_status"] == 404
+    assert len(failed["result"]["asset_ids"]) == 1
+    assert failed["result"]["review_status"] == "needs_review"
+    worker.tick()
+    history = conversation[0].read(conversation[1]["id"])
+    assert history["messages"][-1]["asset_ids"] == failed["result"]["asset_ids"]
+    assert provider.contexts[-1]["result"]["failed_operation"] == "evaluate"
+    assert provider.generated == 1
+    assert "private-provider-message" not in caplog.text
+    assert "provider_model_unavailable" in caplog.text
+
+
+def test_record_lookup_reports_building_separately_from_connection_failure(
+    agent, collection
+):
+    from app.models import Generation
+    from app.services.agent.collection import resolve_record_images
+    from sqlalchemy import create_engine
+
+    engine = create_engine(f"sqlite:///{agent[0].settings.collection_database}")
+    try:
+        with Session(engine) as db:
+            db.get(Generation, "fixture").status = "building"
+            db.commit()
+        with pytest.raises(AgentError) as error:
+            resolve_record_images("co41679", engine)
+        assert error.value.code == "collection_unavailable"
+        assert "awaiting final indexing checks" in str(error.value)
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("trusted", [True, False])
+def test_online_image_redirect_only_to_configured_r2_without_credentials(
+    agent, monkeypatch, trusted
+):
+    from app.core import config
+    from app.core.config import Settings
+
+    endpoint = "https://" + "a" * 32 + ".r2.cloudflarestorage.com"
+    settings = Settings(_env_file=None, r2_endpoint_url=endpoint, r2_bucket="images")
+    monkeypatch.setattr(config, "Settings", lambda: settings)
+    svc = agent[0]
+    svc.settings.collection_api_url = "https://collection.example"
+    from pydantic import SecretStr
+
+    svc.settings.collection_api_token = SecretStr("private-collection-token")
+    requests = []
+    original = httpx.Client
+
+    def handle(request):
+        requests.append(request)
+        if request.url.host == "collection.example":
+            if request.url.path.endswith("/file"):
+                destination = endpoint if trusted else "https://untrusted.example"
+                return httpx.Response(
+                    307,
+                    headers={
+                        "location": destination + "/images/photo.jpg?signature=test"
+                    },
+                )
+            return httpx.Response(200, json={"image_id": "one", "associations": []})
+        assert "authorization" not in request.headers
+        return httpx.Response(200, content=picture())
+
+    monkeypatch.setattr(
+        httpx,
+        "Client",
+        lambda **kwargs: original(**kwargs, transport=httpx.MockTransport(handle)),
+    )
+    if trusted:
+        data, source = read_collection_image(svc.settings, "one")
+        assert data == picture()
+        assert source["image_id"] == "one"
+        assert len(requests) == 3
+    else:
+        with pytest.raises(AgentError):
+            read_collection_image(svc.settings, "one")
+        assert len(requests) == 2

@@ -82,8 +82,10 @@ Python tests, lint checks, and the frontend build. Change the sample with
 
 ## Brand Image Studio
 
-Open `/create` to prepare brand profiles and generate images from descriptions and
-uploaded references. The agent runs in Modal Sandboxes, uses Gemini / Nano Banana,
+Open `/create` to save a brand name, description, colors palette, personality,
+typography, and illustration style. Generate and edit images through the collection
+chat sidebar. Designer-editable prompts live in
+[`image_agent.yaml`](backend/app/prompts/image_agent.yaml). The agent runs in Modal Sandboxes, uses Gemini / Nano Banana,
 and sends execution traces to Pydantic Logfire. This module works independently of
 the collection index. Creation is disabled until configured.
 

@@ -1882,6 +1882,24 @@
             "title": "Colors",
             "default": ""
           },
+          "personality": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Personality",
+            "default": ""
+          },
+          "typography": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Typography",
+            "default": ""
+          },
+          "illustration_style": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Illustration Style",
+            "default": ""
+          },
           "preserve": {
             "type": "string",
             "maxLength": 2000,

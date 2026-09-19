@@ -1631,3 +1631,51 @@ footer p {
     grid-column: 1 / -1;
   }
 }
+
+.brand-page {
+  max-width: 1000px;
+}
+.brand-heading {
+  max-width: 680px;
+  margin: 48px auto 28px;
+}
+.brand-heading h1 {
+  font:
+    400 48px Georgia,
+    serif;
+  margin: 0 0 16px;
+}
+.brand-heading p {
+  line-height: 1.6;
+  color: #6c7560;
+}
+.brand-form {
+  max-width: 680px;
+  margin: 0 auto 60px;
+}
+.brand-field {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.brand-field label {
+  margin-bottom: 0;
+}
+.brand-form select {
+  width: 100%;
+  min-width: 0;
+}
+.brand-form a {
+  text-decoration: underline;
+}
+@media (max-width: 600px) {
+  .brand-heading {
+    margin-top: 28px;
+  }
+  .brand-heading h1 {
+    font-size: 38px;
+  }
+  .brand-form {
+    padding: 20px;
+  }
+}

@@ -363,7 +363,18 @@ export function ChatPanel({ selection }: { selection?: { id: string; nonce: numb
                 <span className="chat-message-author">
                   {message.role === "user" ? "You" : "Companion"}
                 </span>
-                <p>{message.content}</p>
+                <p>
+                  {message.role === "assistant" &&
+                  message.run_status === "failed" &&
+                  message.asset_ids.length > 0
+                    ? "Your images were generated and saved, but review could not finish. Please inspect them before use. You do not need to generate them again."
+                    : message.content}
+                </p>
+                {message.role === "assistant" &&
+                  message.run_status === "failed" &&
+                  message.asset_ids.length > 0 && (
+                    <p className="chat-turn-error">Needs review · Not approved</p>
+                  )}
                 {message.asset_ids.map((id) => {
                   const asset = history?.assets.find((item) => item.id === id)
                   return (

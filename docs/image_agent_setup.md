@@ -9,8 +9,8 @@ references work independently of the collection catalogue and Qdrant.
 Gemini Flash handles conversation outside the sandbox; only compiled design tasks
 enter the sandbox. Explicit user choices override brand defaults for that task.
 The conversation backend and isolated-worktree setup are documented in
-[Brand chat agent backend](chat_agent_backend.md). The existing Image Studio UI
-continues to use single-run generation; the collection sidebar connects to the conversation endpoints.
+[Brand chat agent backend](chat_agent_backend.md). The `/create` page contains the six-field brand editor only; the collection sidebar
+handles conversation, generation, results, and editing. See [brand prompts](brand_prompts.md).
 
 ## Prepare the local application
 
@@ -40,7 +40,7 @@ browser local storage. API clients can send the same key as a bearer token. The
 first release uses one operator credential bound to one server-configured workspace.
 It does not include user registration, membership administration, or company SSO.
 
-Brand profiles, immutable versions, and reference uploads work before model access
+Brand profiles and immutable versions work before model access
 is configured. Generation remains unavailable until the Gemini key and public HTTPS
 gateway origin are configured. Creating runs does not start a worker automatically.
 A status of `queued` means a worker has not claimed the run yet; it is not proof
@@ -108,7 +108,7 @@ A local `127.0.0.1` backend cannot serve this remote sandbox.
 | `AGENT_STARTUP_TIMEOUT` | 180 seconds |
 | `AGENT_MAX_QUEUED_RUNS` | 10 queued, active, or waiting runs per workspace |
 
-The UI accepts one subject and up to three style references, PNG/JPEG/WebP,
+The legacy run and asset APIs accept one subject and up to three style references, PNG/JPEG/WebP,
 10 MiB and 20 million pixels each. A revision adds the previous candidate as a
 fifth model input. Animated and invalid images are rejected. Candidate count is
 one or two; each run allows one additional revision, at most eight combined
@@ -149,7 +149,7 @@ events, and content, and persists sanitized batches for forwarding to Logfire.
 `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=NO_CONTENT` is forced on the
 trusted process; raw prompt and image capture is not exposed as an application option.
 
-The UI's run details show the trace ID for searching in Logfire. Trace delivery uses
+The run API returns the trace ID for searching in Logfire. Trace delivery uses
 a bounded backlog of 500 batches with a 24-hour retry window. The sandbox buffers
 128 spans and exports batches of at most 64 spans. A hard sandbox exit may
 lose final spans; persisted run events remain the source of execution status. Tracing

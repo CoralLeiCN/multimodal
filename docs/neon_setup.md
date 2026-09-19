@@ -59,3 +59,12 @@ cache under `data/search/`; `SEARCH_DATA_DIR` changes that folder.
 
 For imports, indexing, backups, and PostgreSQL tests, see
 [Neon maintenance](../backend/README.md#neon-collaboration).
+
+## Missing migration 0004 at startup
+
+If startup reports `Can't locate revision identified by '0004'`, the database has
+advanced beyond the migration files in the checkout. Revision `0004` records the
+nullable `images.r2_url` string column for object-storage URLs. Keep
+`backend/app/alembic/versions/0004_r2_image_urls.py` with the application code.
+An already upgraded database requires no schema change when this file is restored.
+Do not reset the revision marker or delete catalogue data to bypass the error.

@@ -37,11 +37,12 @@ def resolve_record_images(record_uid, engine=None):
                 .first()
             )
             if not generation or generation["status"] != "ready":
-                raise AgentError(
-                    "collection_unavailable",
-                    "No active ready catalogue is available.",
-                    503,
-                )
+                message = "No active catalogue has been published yet. Complete catalogue indexing before selecting a collection image."
+                if generation and generation["status"] == "building":
+                    message = "The active catalogue is being built or awaiting final indexing checks. Wait for the indexing process to publish it as ready. This does not mean the record is missing or the database connection failed."
+                elif generation:
+                    message = "The active catalogue is not ready because its indexing did not complete successfully. Recover the index before selecting a collection image."
+                raise AgentError("collection_unavailable", message, 503)
             rows = (
                 connection.execute(
                     text(
@@ -207,8 +208,27 @@ def read_online_image(settings, image_id):
             "Bearer " + settings.collection_api_token.get_secret_value()
         )
 
-    def fetch(client, path, limit):
-        with client.stream("GET", origin + path) as response:
+    def fetch(client, url, limit, allow_r2=False):
+        with client.stream("GET", url) as response:
+            if response.status_code == 307 and allow_r2:
+                from app.core.config import Settings
+                from app.services.r2_catalogue import r2_destination
+
+                endpoint, bucket = r2_destination(Settings())
+                target = response.headers.get("location", "")
+                target_url = urlparse(target)
+                trusted = urlparse(endpoint)
+                if (
+                    target_url.scheme != "https"
+                    or target_url.netloc != trusted.netloc
+                    or target_url.username
+                    or target_url.fragment
+                    or not target_url.path.startswith("/" + bucket + "/")
+                ):
+                    raise ValueError("Untrusted image redirect")
+                # Collection API credentials must never be forwarded to object storage.
+                with httpx.Client(timeout=20, follow_redirects=False) as storage_client:
+                    return fetch(storage_client, target, limit)
             if response.status_code == 404:
                 raise AgentError(
                     "image_missing", "No online collection image has this ID.", 404
@@ -232,12 +252,14 @@ def read_online_image(settings, image_id):
         with httpx.Client(
             timeout=20, follow_redirects=False, headers=headers
         ) as client:
-            metadata = json.loads(fetch(client, path, 256 * 1024))
+            metadata = json.loads(fetch(client, origin + path, 256 * 1024))
             if metadata.get("image_id") != image_id or not isinstance(
                 metadata.get("associations", []), list
             ):
                 raise ValueError("Mismatched image metadata")
-            content = fetch(client, path + "/file", settings.max_image_bytes)
+            content = fetch(
+                client, origin + path + "/file", settings.max_image_bytes, allow_r2=True
+            )
         return content, {
             "type": "collection",
             "image_id": image_id,

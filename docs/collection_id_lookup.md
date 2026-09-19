@@ -124,3 +124,9 @@ arbitrary image. Missing records and unavailable catalogues have separate errors
 Imported assets retain `requested_record_uid`, the resolved image UUID, and attribution.
 The gateway process needs the catalogue connection even when image bytes use the
 online API. Restart the API and worker after updating this code.
+
+If the active generation is `building`, lookup reports that indexing is awaiting
+completion or final checks. This is separate from a database connection failure.
+An `indexed` ingestion ledger alone is insufficient to publish a generation:
+the indexer must verify vector counts and payloads before marking it `ready`.
+Do not override that state while another session owns the ingestion writer lock.

@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test"
 
 export const brand = { id: "brand-1", name: "Museum Studio", version: 1 }
-export async function mockChat(page: Page, options: { authenticated?: boolean; pending?: boolean; loseResponse?: boolean; disabled?: boolean } = {}) {
+export async function mockChat(page: Page, options: { authenticated?: boolean; pending?: boolean; loseResponse?: boolean; disabled?: boolean; evaluationFailed?: boolean } = {}) {
   let authenticated = options.authenticated ?? true
   let reads = 0
   let lost = false
@@ -13,9 +13,9 @@ export async function mockChat(page: Page, options: { authenticated?: boolean; p
   const asset = { id: "generated-1", url: "/api/v1/agent/assets/generated-1/file", width: 100, height: 100 }
   function history() {
     const done = !options.pending && ++reads > 1
-    const state = cancelled ? "cancelled" : failed ? "failed" : done ? "succeeded" : "chat_queued"
+    const state = cancelled ? "cancelled" : failed || (done && options.evaluationFailed) ? "failed" : done ? "succeeded" : "chat_queued"
     return { ...chats[0], assets: done ? [asset] : [], messages: sent.flatMap((item, index) => {
-      const user = { id: `user-${index}`, role: "user", content: item.content, asset_ids: [], run_id: `run-${index}`, run_status: state, error_code: failed ? "source_unavailable" : null }
+      const user = { id: `user-${index}`, role: "user", content: item.content, asset_ids: [], run_id: `run-${index}`, run_status: state, error_code: failed ? "source_unavailable" : options.evaluationFailed ? "provider_model_unavailable" : null }
       return done && !cancelled && !failed ? [user, { ...user, id: `assistant-${index}`, role: "assistant", content: "Here is your brand image.", asset_ids: [asset.id] }] : [user]
     }) }
   }

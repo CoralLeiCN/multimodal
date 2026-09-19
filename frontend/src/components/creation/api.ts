@@ -4,6 +4,9 @@ export type Brand = {
   version: number
   name: string
   description: string
+  personality: string
+  typography: string
+  illustration_style: string
   colors: string
   preserve: string
   avoid: string

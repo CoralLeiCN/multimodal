@@ -14,12 +14,19 @@ computer” in grey, ready to submit with Explore. Focusing the field clears the
 example so users can type their own query. Later focus changes preserve typed
 queries. Returning to the collection selects a fresh random example.
 
-Image Studio at `/create` provides workspace sign-in, versioned brand profiles,
-reference uploads, generation progress, clarification, cancellation, downloads,
-and follow-up edits. Its components and API helpers live in `src/components/creation/`.
-The same build works with the standalone agent API; see
-[Image Studio setup](../docs/image_agent_setup.md). Creation tests in
-`tests/creation.spec.ts` mock cloud responses and do not call paid models.
+The `/create` page contains only brand configuration: Brand name, Brand description,
+Brand colors palette, Personality, Typography, and Illustration style. Personality
+is free text (for example, premium, calm, technical, optimistic). Name and description
+are required. The page supports workspace sign-in, saving new brands, and editing
+saved brands as new immutable versions. Old profiles load with empty new fields.
+Generation, task progress, results, and edits are available in collection chat.
+The page has no reference uploads or standalone generation controls.
+
+The API stores `name`, `description`, `colors`, `personality`, `typography`, and
+`illustration_style`. Prompt templates are maintained in
+[`image_agent.yaml`](../backend/app/prompts/image_agent.yaml); see the
+[designer guide](../docs/brand_prompts.md). Browser tests cover all six fields,
+version editing, failed-save recovery, and desktop/mobile layout.
 
 Year-range inputs and place/category dropdowns filter browsing and every search
 mode. Dropdowns use `GET /api/v1/filters`; applying filters repeats the current

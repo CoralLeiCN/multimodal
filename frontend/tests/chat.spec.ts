@@ -63,3 +63,18 @@ test("disabled agent never fabricates a reply", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Send message" })).toBeDisabled()
   await expect(page.getByRole("log")).toBeEmpty()
 })
+
+
+test("retains generated images when evaluation fails", async ({ page }) => {
+  await mockChat(page, { evaluationFailed: true })
+  await page.goto("/")
+  await page.getByRole("button", { name: "Open collection chat" }).click()
+  await expect(page.getByLabel("Brand", { exact: true })).toHaveValue("brand-1")
+  await page.getByLabel("Message the collection companion").fill("Create a brand image")
+  await page.getByRole("button", { name: "Send message" }).click()
+  await expect(page.getByText("Needs review · Not approved")).toBeVisible()
+  await expect(page.getByRole("img", { name: "Chat result" })).toBeVisible()
+  await expect(page.getByRole("link", { name: "Download image" })).toBeVisible()
+  await expect(page.getByRole("log")).toContainText("You do not need to generate them again")
+  await page.screenshot({ path: "/tmp/chat-evaluation-failure.png", fullPage: true })
+})

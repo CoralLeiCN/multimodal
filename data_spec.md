@@ -267,3 +267,15 @@ For chat collection-record references (`co…`), the trusted gateway resolves ex
 It scopes joins to the active ready generation and preserves `requested_record_uid`
 alongside the resolved image UUID and attribution in imported asset provenance.
 Multiple matching images require user selection; see [collection ID lookup](docs/collection_id_lookup.md).
+
+
+Brand profiles store six designer-facing values: `name`, `description`, `colors`,
+`personality`, `typography`, and `illustration_style`. Profiles remain immutable
+versions in the agent database's JSON column; no catalogue migration is required.
+The last three fields default to empty for older profiles. Existing legacy brand
+fields remain API-compatible but are omitted from new submissions by `/create`.
+The six values are inserted as data into the packaged YAML brand prompt template.
+
+Catalogue schema revision `0004` adds an optional `images.r2_url` string for an
+object-storage URL. Existing records may leave it null. This field does not change
+local image resolution or automatically upload images.

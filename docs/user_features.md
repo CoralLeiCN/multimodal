@@ -4,16 +4,12 @@ We want to build a multimodal search tool that helps users find objects,
 documents, and archives from the Science Museum Group.
 
 - Users can search the collections using natural language together with filters.
-- Image Studio at `/create` accepts a prompt, an optional subject image, and a
-  versioned brand profile containing a description and up to three reference images.
-  A Modal Sandbox runs the agent to plan, generate with Nano Banana, evaluate, and
-  optionally revise one candidate. Users can answer clarifying questions, cancel,
-  download results, and start an edit from a selected output. Pydantic Logfire
-  records agent and model traces. Cloud configuration is required for generation;
-  see [Image Studio setup](image_agent_setup.md).
+- The `/create` page saves six brand attributes: name, description, colors palette,
+  personality, typography, and illustration style. Designers generate images in
+  the collection chat using the saved brand. Prompt text is editable in YAML;
+  see [brand prompts](brand_prompts.md).
 - The chat backend accepts collection image IDs in messages and can generate in the
-  configured brand style, then edit the result in later turns. The existing studio
-  UI still accepts uploaded references; the collection sidebar uses the chat API.
+  configured brand style, then edit the result in later turns. The collection sidebar uses the chat API.
 - Users can open a chat panel from the left edge to explore the collection with
   an agent while browsing and searching images in the same view. The frontend
   connects to saved brand conversations, with task status, result images,

@@ -11,6 +11,10 @@ class BrandInput(Contract):
     name: str = Field(min_length=1, max_length=100)
     description: str = Field(min_length=1, max_length=6000)
     colors: str = Field(default="", max_length=500)
+    personality: str = Field(default="", max_length=1000)
+    typography: str = Field(default="", max_length=1000)
+    illustration_style: str = Field(default="", max_length=2000)
+    # Retained for existing API clients and historical brand versions.
     preserve: str = Field(default="", max_length=2000)
     avoid: str = Field(default="", max_length=2000)
     reference_asset_ids: list[str] = Field(default_factory=list, max_length=3)

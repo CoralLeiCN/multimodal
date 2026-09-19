@@ -115,6 +115,9 @@ class AgentService:
             "id": brand.id,
             "brand_id": brand.brand_id,
             "version": brand.version,
+            "personality": "",
+            "typography": "",
+            "illustration_style": "",
             **brand.profile,
         }
 

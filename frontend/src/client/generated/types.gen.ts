@@ -139,6 +139,18 @@ export type BrandInput = {
      */
     colors?: string;
     /**
+     * Personality
+     */
+    personality?: string;
+    /**
+     * Typography
+     */
+    typography?: string;
+    /**
+     * Illustration Style
+     */
+    illustration_style?: string;
+    /**
      * Preserve
      */
     preserve?: string;

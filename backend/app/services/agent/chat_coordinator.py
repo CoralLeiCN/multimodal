@@ -272,6 +272,8 @@ class ChatCoordinator:
                 if status == "succeeded"
                 else "The image task could not finish. Please check the image ID and try a new message."
             )
+            if run.result.get("asset_ids") and status != "succeeded":
+                message = "Your images were generated and saved, but review could not finish. Inspect the attached images before using them; you do not need to generate them again."
             run.result = {**run.result, "chat_error_code": code}
             self.publish(session, run, message, status)
         else:

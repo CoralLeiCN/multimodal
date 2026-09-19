@@ -519,6 +519,9 @@ def test_refusal_and_bad_dimensions_preserve_failure_without_retry(agent):
     run = new_run(agent)
     claims = activate(agent, run["id"])
     provider = GeminiProvider.__new__(GeminiProvider)
+    from app.services.agent.prompts import load_prompts
+
+    provider.prompts = load_prompts()
     provider.settings = service.settings
     provider.client = types.SimpleNamespace(
         models=types.SimpleNamespace(
@@ -675,3 +678,51 @@ def test_structured_provider_uses_json_schema_wire_format(operation):
         assert len(requests) == 1
     finally:
         provider.close()
+
+
+def test_six_brand_fields_persist_across_versions(agent):
+    svc, original, *_ = agent
+    request = BrandInput(
+        name="Design brand",
+        description="Design direction",
+        colors="Blue",
+        personality="premium, calm",
+        typography="Humanist sans",
+        illustration_style="Geometric",
+    )
+    created = svc.create_brand(request)
+    updated = svc.create_brand(
+        request.model_copy(update={"typography": "Serif"}), created["brand_id"]
+    )
+    versions = {b["id"]: b for b in svc.brands()}
+    assert versions[created["id"]]["typography"] == "Humanist sans"
+    assert versions[updated["id"]]["typography"] == "Serif"
+    assert versions[updated["id"]]["personality"] == "premium, calm"
+    assert versions[updated["id"]]["illustration_style"] == "Geometric"
+    assert versions[original["id"]]["personality"] == ""
+
+
+def test_prompt_yaml_templates_are_safe_and_require_all_brand_fields(tmp_path):
+    import yaml
+    from app.services.agent.prompts import brand_brief, load_prompts
+
+    prompts = load_prompts()
+    brand = {
+        "name": "$typography",
+        "description": "An example",
+        "colors": "Blue",
+        "personality": "Calm",
+        "typography": "Serif",
+        "illustration_style": "Ink",
+    }
+    brief = brand_brief(brand, prompts)
+    assert "Brand name: $typography" in brief
+    assert "Typography: Serif" in brief
+    assert "Personality: Calm" in brief
+    assert "Illustration style: Ink" in brief
+    assert "Not specified" in brand_brief({}, prompts)
+    path = tmp_path / "prompts.yaml"
+    prompts["brand"] += "\n$unexpected"
+    path.write_text(yaml.safe_dump(prompts))
+    with pytest.raises(ValueError, match="six supported"):
+        load_prompts(path)

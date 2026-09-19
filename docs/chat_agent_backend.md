@@ -238,7 +238,7 @@ messages and generated assets every two seconds while the sidebar is open. The
 Conversation selector restores prior chats after reload. Results can be downloaded
 or selected as `subject_asset_id` for a follow-up edit. Task errors and cancellation
 remain visible in history; retrying a lost HTTP submission reuses its original key.
-Brand configuration and reference uploads remain available in Image Studio.
+The `/create` page edits the six brand design fields; image generation happens in chat.
 
 
 Planning and evaluation use GenerateContent's JSON Schema field for strict
@@ -256,3 +256,35 @@ arbitrary image. Missing records and unavailable catalogues have separate errors
 Imported assets retain `requested_record_uid`, the resolved image UUID, and attribution.
 The gateway process needs the catalogue connection even when image bytes use the
 online API. Restart the API and worker after updating this code.
+
+
+## Brand design templates
+
+The brand editor stores name, description, colors, personality, typography, and
+illustration style. All model stages receive the six-field brand brief rendered
+from `backend/app/prompts/image_agent.yaml`. This file also owns the common system
+prompt and chat, planning, generation, and evaluation instructions. See
+[the designer guide](brand_prompts.md). New fields default to empty strings for old
+profiles. Legacy preserve/avoid/reference fields remain accepted by the API for
+existing clients and historical profiles, but are not exposed in the brand form.
+
+### Evaluation failures after generation
+
+A saved candidate remains attached to the chat if evaluation fails. The UI marks
+failed tasks with attached images as needing review and keeps download and edit
+controls available. These images are not approved; no automatic paid retry occurs.
+The result prompt distinguishes generation success from evaluation failure.
+
+Provider errors retain safe diagnostics (operation, model, exception type, HTTP
+status) in the call record, run result, server log, and Logfire warning. Raw error
+messages and image contents are excluded. A provider 404 maps to
+`provider_model_unavailable`, authentication/permission failures to their respective
+codes, and 429 to `provider_rate_limited`; uncertain transport errors keep
+`outcome_unknown`. Check `.env` overrides for `AGENT_MODEL` and
+`AGENT_EVALUATION_MODEL` when a deprecated model returns 404. Restart API and worker
+after changing model configuration.
+
+The online image reader accepts a single 307 redirect from the image file route
+to the configured R2 HTTPS endpoint and bucket. It preserves the response size
+limit and never forwards collection API authorization to storage. Other redirect
+destinations and further redirects are rejected.

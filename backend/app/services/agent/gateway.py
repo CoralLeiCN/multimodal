@@ -1,5 +1,8 @@
+import logging
 import time
 
+import logfire
+from google.genai.errors import APIError
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -187,6 +190,46 @@ class Gateway:
             code = error.code if isinstance(error, AgentError) else "outcome_unknown"
             if isinstance(error, ValidationError):
                 code = "invalid_model_output"
+            http_status = error.code if isinstance(error, APIError) else None
+            if http_status is not None:
+                code = {
+                    400: "provider_invalid_request",
+                    401: "provider_authentication",
+                    403: "provider_permission_denied",
+                    404: "provider_model_unavailable",
+                    429: "provider_rate_limited",
+                }.get(
+                    http_status,
+                    "provider_unavailable"
+                    if http_status >= 500
+                    else "provider_rejected",
+                )
+            diagnostic = {
+                "operation": tool.operation,
+                "exception_type": type(error).__name__,
+                "http_status": http_status,
+                "model": getattr(
+                    service.settings,
+                    {"evaluate": "evaluation_model", "generate": "image_model"}.get(
+                        tool.operation, "model"
+                    ),
+                ),
+            }
+            # Never log raw exceptions: provider messages may contain credentials or image data.
+            logging.getLogger(__name__).warning(
+                "Provider call failed run=%s step=%s code=%s diagnostic=%s",
+                claims["run_id"],
+                tool.step_id,
+                code,
+                diagnostic,
+            )
+            logfire.warn(
+                "Agent provider call failed",
+                run_id=claims["run_id"],
+                step_id=tool.step_id,
+                error_code=code,
+                **diagnostic,
+            )
             with transaction(service.engine) as session:
                 run = service.run(session, claims["run_id"], True)
                 call = session.scalar(
@@ -195,11 +238,14 @@ class Gateway:
                     )
                 )
                 call.status, call.error_code = "failed", code
+                call.usage = {"diagnostic": diagnostic}
                 if run.status == "running" and run.attempt_id == claims["attempt_id"]:
                     run.status, run.stage, run.error_code = "failed", "failed", code
                     run.result = {
                         "asset_ids": run.checkpoint.get("generated", []),
                         "review_status": "needs_review",
+                        "failed_operation": tool.operation,
+                        "diagnostic": diagnostic,
                     }
                     emit(
                         session,

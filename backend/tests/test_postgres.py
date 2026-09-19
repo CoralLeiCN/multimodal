@@ -16,6 +16,10 @@ def test_migrations_are_repeatable_and_keep_cache_local(setup):
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
             == "0004"
         )
+    column = next(
+        c for c in inspect(engine).get_columns("images") if c["name"] == "r2_url"
+    )
+    assert column["nullable"]
 
 
 def test_postgres_writer_lock_across_workspaces(setup, tmp_path):

@@ -20,6 +20,7 @@ dependencies = [
     "modal>=1.0,<2",
     "logfire[fastapi,google-genai]>=4.41,<5",
     "opentelemetry-proto>=1.30,<2",
+    "pyyaml>=6,<7",
 ]
 
 [build-system]
