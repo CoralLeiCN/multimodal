@@ -33,19 +33,23 @@ class SearchService:
         self._slots = threading.BoundedSemaphore(4)
 
     def generation(self, require_vectors=False) -> Generation:
-        if self._active is None:
-            with Session(self.engine) as session:
-                state = session.get(ServiceState, 1)
-                generation = (
-                    session.get(Generation, state.active_generation) if state else None
-                )
-                if not generation or generation.status != "ready":
-                    raise SearchError(
-                        "The collection is being prepared. No image index is ready yet.",
-                        "index_empty",
-                    )
-                self._active = generation
-        generation = self._active
+        with Session(self.engine) as session:
+            state = session.get(ServiceState, 1)
+            generation = (
+                session.get(Generation, state.active_generation) if state else None
+            )
+        if not generation or generation.status != "ready":
+            self._active, self._verified = None, False
+            raise SearchError(
+                "The collection is being prepared. No image index is ready yet.",
+                "index_empty",
+            )
+        if self._active is None or (self._active.id, self._active.completed_at) != (
+            generation.id,
+            generation.completed_at,
+        ):
+            self._verified = False
+        self._active = generation
         if require_vectors:
             if generation.config_hash != self.settings.config_hash:
                 raise SearchError(

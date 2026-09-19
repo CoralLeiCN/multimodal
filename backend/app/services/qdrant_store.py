@@ -9,6 +9,7 @@ from app.services.metadata import PAYLOAD_INDEXES, PAYLOAD_SCHEMA_VERSION, qdran
 
 class VectorStore:
     def __init__(self, settings: Settings, client=None):
+        self.settings = settings
         self.client = client or QdrantClient(
             url=settings.qdrant_url,
             timeout=10,
@@ -25,6 +26,27 @@ class VectorStore:
                     size=generation.dimensions, distance=models.Distance.COSINE
                 ),
             )
+        if self.settings.qdrant_collection_name == generation.collection:
+            offset = None
+            while True:
+                points, offset = self.client.scroll(
+                    generation.collection,
+                    limit=256,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+                if any(
+                    (point.payload or {}).get("index_version") != generation.id
+                    for point in points
+                ):
+                    raise SearchError(
+                        "The permanent collection belongs to another catalogue. "
+                        "Use its original SQLite database or an empty collection.",
+                        "index_mismatch",
+                    )
+                if offset is None:
+                    break
         self.check_collection(generation)
         existing = self.client.get_collection(generation.collection).payload_schema
         for field, schema in PAYLOAD_INDEXES.items():

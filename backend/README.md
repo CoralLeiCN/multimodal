@@ -111,3 +111,13 @@ TEST_QDRANT_URL=http://127.0.0.1:6333 uv run pytest backend/tests/test_qdrant_se
 ```
 
 This test creates and deletes its own temporary collection with synthetic vectors.
+
+## Permanent collection setting
+
+`QDRANT_COLLECTION_NAME` selects a permanent collection for ingestion. Omit it
+for a separate collection per generation. Use an existing collection's exact name
+and original SQLite database to extend it. Each sample upserts selected images
+and keeps earlier images. Model and dimensions must match the existing index.
+Stop the API during in-place updates and restart it after successful ingestion.
+Failed updates require resume before that collection becomes available again.
+See [setup and recovery](../cronjob/README.md#permanent-collection).

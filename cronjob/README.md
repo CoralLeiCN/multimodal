@@ -38,7 +38,8 @@ The ignored root `.env` supplies `GEMINI_API_KEY`. Indexing uploads the selected
 thumbnails to Google and stores each successful embedding in a SQLite cache before
 upserting it to Qdrant. Stable point IDs make retries safe. An image becomes
 `indexed` only after its Qdrant point is confirmed. A complete generation becomes
-active in one SQLite transaction; failed runs retain the previous active index.
+active in one SQLite transaction; failed runs retain the previous active index when using separate collections.
+Permanent collection updates remain unavailable until successfully resumed.
 
 Outputs live under `data/search/`: `catalog.sqlite3`, `selections/*.jsonl`,
 `runs/*.json`, and persistent Qdrant storage. Each JSONL selection row includes
@@ -49,6 +50,39 @@ and four payload indexes for place/category keywords and start/end years.
 Exit `0` indicates success and `2` indicates an invalid or failed run.
 
 See [the backend guide](../backend/README.md) for API and configuration details.
+
+## Permanent collection
+
+Set `QDRANT_COLLECTION_NAME=smg_images` in `.env` to keep one collection across
+indexing runs. The example configuration enables this setting. If omitted, each
+run creates a separate collection using `QDRANT_COLLECTION_PREFIX`.
+
+To reuse an existing collection, set `QDRANT_COLLECTION_NAME` to its exact name
+and keep its original `SQLITE_PATH`. New runs reuse that collection's generation
+and add or update selected images while retaining earlier images. Stable image
+IDs prevent duplicates and cached embeddings avoid repeated embedding requests.
+The selection limit applies to each sample; the accumulated collection may be larger.
+Changing the seed changes the sample but does not guarantee new images.
+
+```sh
+make preview-index LIMIT=500 SCAN_LIMIT=10000
+make index LIMIT=500 SCAN_LIMIT=10000
+```
+
+Updates happen in place. Stop the API before ingestion or preparation and restart
+it after completion. The API checks the catalogue status on requests and blocks
+access while the active collection is building or failed; stopping it also avoids
+requests already in flight during an update. Resume failures with the printed
+run ID. `--prepare-only` also marks an existing permanent collection as building.
+There is no rollback to a previous version of that same collection.
+
+The permanent collection requires the original embedding model and dimensions.
+A populated collection from another SQLite catalogue is rejected. Keep SQLite
+and Qdrant together when backing up or moving the index. Existing collections
+are not renamed, merged, or deleted automatically. Delete an obsolete collection
+only after the retained collection is complete and includes the images you need.
+Selection snapshots and reports use the retained generation ID and are replaced
+on subsequent runs; snapshots contain the accumulated catalogue.
 
 ## Refresh search filter metadata
 

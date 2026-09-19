@@ -25,10 +25,24 @@ def create_generation(
 ) -> str:
     if not selected:
         raise ValueError("No eligible local images were found within the scan limit.")
+    if settings.qdrant_collection_name:
+        with Session(engine) as session:
+            existing = session.exec(
+                select(Generation).where(
+                    Generation.collection == settings.qdrant_collection_name
+                )
+            ).first()
+            if existing:
+                if existing.config_hash != settings.config_hash:
+                    raise ValueError(
+                        "Permanent collection requires the original embedding settings."
+                    )
+                return extend_generation(engine, settings, existing.id, selected)
     generation_id = uuid4().hex[:16]
     generation = Generation(
         id=generation_id,
-        collection=f"{settings.qdrant_collection_prefix}_{generation_id}",
+        collection=settings.qdrant_collection_name
+        or f"{settings.qdrant_collection_prefix}_{generation_id}",
         model=settings.embedding_model,
         dimensions=settings.embedding_dimensions,
         config_hash=settings.config_hash,
@@ -73,6 +87,95 @@ def create_generation(
     return generation_id
 
 
+def extend_generation(engine, settings, generation_id, selected):
+    """Upsert selected catalogue rows and retain all previously selected images."""
+    with Session(engine) as session:
+        generation = session.get(Generation, generation_id)
+        generation.status, generation.error, generation.completed_at = (
+            "building",
+            None,
+            None,
+        )
+        session.add(generation)
+        for item in selected:
+            image = session.get(Image, (generation_id, item["image_id"]))
+            values = {key: item[key] for key in Image.model_fields if key in item}
+            values["filter_metadata"] = filter_rows(item["associations"])
+            if image is None:
+                image = Image(generation_id=generation_id, **values)
+            else:
+                for key, value in values.items():
+                    setattr(image, key, value)
+            session.add(image)
+            session.flush()
+            for association in session.exec(
+                select(Association).where(
+                    Association.generation_id == generation_id,
+                    Association.image_id == image.image_id,
+                )
+            ).all():
+                session.delete(association)
+            session.flush()
+            for index, association in enumerate(item["associations"]):
+                session.add(
+                    Association(
+                        id=f"{generation_id}:{image.image_id}:{index}",
+                        generation_id=generation_id,
+                        image_id=image.image_id,
+                        **association,
+                    )
+                )
+            tracking = session.get(Ingestion, (generation_id, image.image_id))
+            if tracking is None:
+                tracking = Ingestion(
+                    generation_id=generation_id,
+                    image_id=image.image_id,
+                    checksum=image.checksum,
+                    config_hash=generation.config_hash,
+                    collection=generation.collection,
+                    point_id=image.image_id,
+                )
+            tracking.checksum = image.checksum
+            session.add(tracking)
+        session.flush()
+        images = session.exec(
+            select(Image).where(Image.generation_id == generation_id)
+        ).all()
+        generation.count = len(images)
+        session.add(generation)
+        session.commit()
+    save_selection(engine, settings, generation_id)
+    return generation_id
+
+
+def save_selection(engine, settings, generation_id):
+    rows = []
+    with Session(engine) as session:
+        for image in session.exec(
+            select(Image)
+            .where(Image.generation_id == generation_id)
+            .order_by(Image.image_id)
+        ).all():
+            row = image.model_dump(exclude={"generation_id"})
+            row["associations"] = [
+                association.model_dump(exclude={"id", "generation_id", "image_id"})
+                for association in session.exec(
+                    select(Association).where(
+                        Association.generation_id == generation_id,
+                        Association.image_id == image.image_id,
+                    )
+                ).all()
+            ]
+            rows.append(row)
+    path = settings.data_dir / "selections" / f"{generation_id}.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows)
+    )
+    temporary.replace(path)
+
+
 def run_ingestion(
     engine, settings: Settings, generation_id: str, embeddings, vectors, progress=print
 ) -> dict:
@@ -103,6 +206,7 @@ def run_ingestion(
         session.refresh(generation)
     embedded = reused = 0
     try:
+        save_selection(engine, settings, generation_id)
         vectors.ensure_collection(generation)
         for position, image in enumerate(images, 1):
             cache_key = hashlib.sha256(

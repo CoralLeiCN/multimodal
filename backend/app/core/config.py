@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     qdrant_collection_prefix: str = Field(
         default="smg_images", pattern=r"^[A-Za-z0-9_-]{1,80}$"
     )
+    qdrant_collection_name: str | None = Field(
+        default=None, pattern=r"^[A-Za-z0-9_-]{1,80}$"
+    )
     qdrant_api_key: SecretStr | None = None
     sqlite_path: Path = ROOT / "data/search/catalog.sqlite3"
     image_root: Path = ROOT / "data/images"

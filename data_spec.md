@@ -164,3 +164,9 @@ nested metadata objects, with one object per association and date interval.
 Date filters use inclusive overlap. Missing metadata remains searchable without
 that field's filter. See [the filter contract](docs/multimodal_search_spec.md#metadata-filters)
 and [metadata refresh command](cronjob/README.md#refresh-search-filter-metadata).
+
+With `QDRANT_COLLECTION_NAME` set, search ingestion keeps an accumulated catalogue
+in the same generation and Qdrant collection. Each sample adds or updates its
+selected image rows, source associations, and filter metadata; images outside
+that sample remain present. Selection snapshots contain the accumulated catalogue.
+See [permanent collection setup](cronjob/README.md#permanent-collection).

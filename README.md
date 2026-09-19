@@ -41,6 +41,12 @@ If port 8000 is occupied, use `make run PORT=8001` and open
 On later launches, use `make qdrant-up` and `make run` to reuse the existing index.
 Restart the app after publishing a replacement index.
 
+Set `QDRANT_COLLECTION_NAME` in `.env` to reuse one collection across runs.
+The example uses `smg_images`; to retain an existing collection, use its exact
+name with its original SQLite catalogue. Ingestion adds or updates selected
+images and retains earlier images. Stop the API during these updates and restart
+it after completion. See [permanent collection setup](cronjob/README.md#permanent-collection).
+
 For development, run `make backend` in one terminal and `make dev` in another,
 then open `http://127.0.0.1:5173`. Qdrant and an index are still needed for vector
 search. `make qdrant-down` stops the database and keeps its data.

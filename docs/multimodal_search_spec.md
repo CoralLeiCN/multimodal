@@ -289,9 +289,11 @@ Derive `image_id` as a UUIDv5 from a fixed project namespace and the normalized
 source location. Use that UUID as the Qdrant point ID. Moving the repository or
 retrying ingestion therefore preserves the ID. A shared image appears once in
 results and retains its selected associations. Catalogue rows are scoped to a
-generation so building an index cannot change metadata served by an existing one.
+generation. Separate collection builds preserve the existing generation.
+Permanent collection updates modify the retained generation in place.
 
-Each generation owns a Qdrant collection named `smg_images_<index_version>` with
+When `QDRANT_COLLECTION_NAME` is omitted, each generation owns a Qdrant collection
+named `smg_images_<index_version>` with
 one 1536-dimensional dense vector per image and `Cosine` distance. Validate the
 actual configured dimension and distance before writing or querying. Store
 `image_id`, `image_sha256`, `embedding_config_hash`, `index_version`,
@@ -304,6 +306,23 @@ joins returned IDs to `images` and `image_associations` for the active generatio
 For “Find similar”, retrieve the selected point's vector and exclude its ID from
 the query. A missing catalogue association or point is an index consistency error.
 [Source: Qdrant query API](https://api.qdrant.tech/api-reference/search/query-points).
+
+With `QDRANT_COLLECTION_NAME` configured, ingestion reuses the generation owning
+that exact collection in SQLite, or creates one for an empty/new collection.
+Selected images and associations are upserted, earlier images are retained, and
+the accumulated count and selection snapshot are updated. Embedding configuration
+must match. Foreign catalogue points are rejected before upserts. Reports and
+snapshots reuse the generation ID. Existing collections are never deleted or
+merged automatically. `.env.example` enables this mode with `smg_images`.
+
+Permanent updates set the retained generation to `building`, then `ready` after
+verification, or `failed` on error. Resume reconciles its accumulated image rows.
+The API reads active status on requests and invalidates vector verification when
+completion changes. Stop the API during these updates to avoid in-flight requests,
+then restart it after success. This mode has no previous-version rollback;
+preparation also makes the retained active generation unavailable until resumed.
+The lifecycle guarantees below about preserving the previous active index apply
+only to separate collections.
 
 ## Ingestion lifecycle and recovery
 
