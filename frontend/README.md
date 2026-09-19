@@ -11,6 +11,28 @@ search or refreshes the browse grid. Clearing filters keeps the current query.
 Date ranges match overlapping creation years. The detail panel displays source
 place and category labels alongside dates and attribution.
 
+The left-edge Chat tab toggles a collection companion sidebar. Opening it makes
+room beside the collection, so users can browse, filter, and search images while
+chatting. The collection and conversation scroll independently, and interacting
+with the collection leaves the sidebar open. On screens up to 900px wide, the
+collection and chat share the screen vertically with chat below the collection.
+
+Chat includes suggested prompts, a multiline composer, message history, and a
+New chat control. Enter sends a message; Shift + Enter adds a line. Closing the
+sidebar preserves the conversation and draft until the page reloads. Escape
+while focus is inside the chat closes it and restores focus to the tab.
+
+Chat currently runs as an explicitly labelled local preview. Messages are held
+in React state, and the preview returns a fixed explanatory reply without making
+network requests. To connect an agent, pass an `onSend` handler to `ChatPanel` in
+`src/routes/index.tsx`. The exported `ChatReplyHandler` in
+`src/components/chat-panel.tsx` accepts the complete message history (including
+the latest user message) and an `AbortSignal`, and resolves to the assistant's
+reply string. Providing this handler removes the preview labels. The component
+handles pending replies, retry after failure, and cancellation when starting a
+new chat or unmounting. Closing the sidebar lets a pending reply finish. Keep
+credentials and agent execution in the backend; no chat endpoint is assumed here.
+
 From the repository root, start the backend as described in
 [the backend guide](../backend/README.md), then run:
 
