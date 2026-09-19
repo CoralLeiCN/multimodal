@@ -92,6 +92,10 @@ concurrent batch workers. Use `make index BATCH_SIZE=10 WORKERS=4` to choose
 both limits; `BATCH_SIZE` accepts 1–100 and `WORKERS` accepts 1–10. Large images
 split into smaller requests. `BATCH_SIZE=1` sends one image per request, and
 `WORKERS=1` runs one batch at a time. `LIMIT` controls the sample size independently.
+`LIMIT` and `SCAN_LIMIT` accept any positive integer. For a larger sample, use
+`make preview-index LIMIT=5000 SCAN_LIMIT=50000`, then
+`make index LIMIT=5000 SCAN_LIMIT=50000 BATCH_SIZE=10 WORKERS=10`.
+The scan limit defaults to 1,000 records, so increase it along with the image limit.
 `INDEX_ARGS` passes extra selection options such as `--seed 7` or
 `--metadata path/to/export.json`; use the direct
 [indexing command](cronjob/README.md#sample-and-index-images) to resume a run.

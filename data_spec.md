@@ -203,6 +203,9 @@ See [permanent collection setup](cronjob/README.md#permanent-collection).
 Catalogue sharing uses Neon. The repository contains no catalogue database
 snapshot. Indexing without a selection limit reuses saved catalogue rows and
 skips bronze scanning and sampling; an explicit limit selects a new sample.
+The image selection and metadata scan limits accept any positive integer. The
+metadata scan defaults to 1,000 source records; larger samples should explicitly
+increase both limits.
 Cached vectors stay in the separate local
 `SEARCH_DATA_DIR/embedding_cache.sqlite3` database; `SEARCH_DATA_DIR` defaults to
 `data/search/`. Existing cache files are reused during indexing. Batched Gemini

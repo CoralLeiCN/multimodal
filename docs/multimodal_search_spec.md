@@ -182,8 +182,9 @@ The browser accesses the SQL catalogue and Qdrant through the backend.
 
 ## Bounded data selection
 
-Sampling requires an explicit `--limit` from 1 to 1,000 distinct images, with a
-scan limit of **1,000 source records** by default and a maximum of 10,000 records.
+Sampling requires an explicit positive `--limit` for distinct images, with a
+scan limit of **1,000 source records** by default. Both `--limit` and
+`--scan-limit` accept any positive integer without a fixed upper cap.
 `make preview-index` supplies a 50-image limit when none is given. Plain
 `make index` and the indexing script without `--limit` skip metadata scanning,
 sampling, and generation creation. Reuse the saved generation matching

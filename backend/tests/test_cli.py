@@ -19,6 +19,9 @@ def test_prepare_only_saves_selection_without_external_calls(setup, monkeypatch)
     "args",
     [
         ["--limit", "0"],
+        ["--limit", "-1"],
+        ["--limit", "1", "--scan-limit", "0"],
+        ["--limit", "1", "--scan-limit", "-1"],
         ["--dry-run"],
         ["--prepare-only"],
         ["--seed", "7"],
@@ -28,7 +31,6 @@ def test_prepare_only_saves_selection_without_external_calls(setup, monkeypatch)
         ["--batch-size", "101"],
         ["--workers", "0"],
         ["--workers", "11"],
-        ["--scan-limit", "10001"],
         ["--resume", "example", "--limit", "50"],
     ],
 )
@@ -36,6 +38,30 @@ def test_invalid_cli_options_exit_two(args):
     with pytest.raises(SystemExit) as error:
         index_images.main(args)
     assert error.value.code == 2
+
+
+def test_large_selection_limits_reach_sampler(monkeypatch):
+    calls = []
+
+    def select_sample(settings, metadata, limit, scan_limit, seed):
+        calls.append((limit, scan_limit, seed))
+        return [{"title": "Sample image"}], {"selected": 1}
+
+    from contextlib import nullcontext
+    from unittest.mock import Mock
+
+    monkeypatch.setattr(index_images, "Settings", Mock())
+    monkeypatch.setattr(index_images, "configure_telemetry", Mock())
+    monkeypatch.setattr(index_images, "GeminiEmbeddings", Mock())
+    monkeypatch.setattr(index_images, "ingestion_lock", lambda *a, **k: nullcontext())
+    monkeypatch.setattr(index_images, "select_images", select_sample)
+    assert (
+        index_images.main(
+            ["--limit", "5000", "--scan-limit", "50000", "--dry-run"]
+        )
+        == 0
+    )
+    assert calls == [(5000, 50000, 42)]
 
 
 def test_resume_accepts_batch_size_and_uses_it_for_requests(setup, monkeypatch):

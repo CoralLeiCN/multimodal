@@ -45,8 +45,17 @@ when `LIMIT` is omitted and defaults to scanning 1,000 records. Plain `make inde
 supplies neither a limit nor a scan limit.
 
 `--metadata PATH` can be repeated for specific bronze exports. `--seed` changes
-the sample, `--scan-limit` accepts up to 10,000 records, and `--limit` accepts up
-to 1,000 images. `--prepare-only` saves the selection snapshot and catalogue tracking
+the sample. `--scan-limit` bounds the number of metadata records scanned, and
+`--limit` bounds the number of selected images. Both accept any positive integer;
+the scan limit defaults to 1,000 records. To select a larger sample, use:
+
+```sh
+make preview-index LIMIT=5000 SCAN_LIMIT=50000
+make index LIMIT=5000 SCAN_LIMIT=50000 BATCH_SIZE=10 WORKERS=10
+```
+
+The actual image count depends on eligible local files in the scanned records.
+`--prepare-only` saves the selection snapshot and catalogue tracking
 rows without contacting Gemini, Qdrant, or R2.
 
 Indexing defaults to 10 images per Gemini request and up to 10 concurrent batch

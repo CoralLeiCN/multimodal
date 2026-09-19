@@ -22,10 +22,12 @@ def main(argv=None):
     parser.add_argument(
         "--limit",
         type=int,
-        help="Select this many images (1–1000); omit to reuse the saved selection",
+        help="Select up to this many images (positive integer); omit to reuse the saved selection",
     )
     parser.add_argument(
-        "--scan-limit", type=int, help="Metadata records to scan; default 1000"
+        "--scan-limit",
+        type=int,
+        help="Metadata records to scan (positive integer); default 1000",
     )
     parser.add_argument("--seed", type=int, help="Repeatable sample seed; default 42")
     parser.add_argument("--metadata", type=Path, action="append")
@@ -72,10 +74,8 @@ def main(argv=None):
         )
     args.scan_limit = args.scan_limit if args.scan_limit is not None else 1000
     args.seed = args.seed if args.seed is not None else 42
-    if (
-        args.limit is not None and not 1 <= args.limit <= 1000
-    ) or not 1 <= args.scan_limit <= 10000:
-        parser.error("limit must be 1–1000 and scan-limit must be 1–10000")
+    if (args.limit is not None and args.limit < 1) or args.scan_limit < 1:
+        parser.error("limit and scan-limit must be positive integers")
     if not 1 <= args.workers <= 10:
         parser.error("workers must be 1–10")
     if not 1 <= args.batch_size <= 100:
