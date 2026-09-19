@@ -46,3 +46,13 @@ Existing commits use short lowercase action phrases, such as `add gitignore`. Us
 ## Data Handling
 
 Keep downloaded assets and generated reports under the ignored `data/` directory. Preserve source identifiers, licence fields, and stable manifest columns. Consult `data_spec.md` before reusing collection content.
+
+## Collection ID Lookup
+
+When a user asks for images by an SMG collection record ID such as `co25823`,
+follow [the collection ID lookup procedure](docs/collection_id_lookup.md).
+Use an exact, parameterized SQLite match on `image_associations.record_uid` in
+the active ready generation, returning all distinct associated images. Resolve
+their generated `image_id` UUIDs before using the image API routes. Report a
+missing catalogue separately from an ID with no indexed images. Use this route
+for identifier requests; semantic text search is for descriptions.

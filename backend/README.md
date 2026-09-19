@@ -68,6 +68,11 @@ publishing a replacement index. The frontend build is served at `/` when
 | `POST /api/v1/search/image` | Multipart image query. |
 | `POST /api/v1/images/{image_id}/similar` | Similar images using a stored vector. |
 
+To resolve a collection record ID such as `co25823` to image UUIDs, follow the
+[collection ID lookup procedure](../docs/collection_id_lookup.md). This uses an
+exact SQLite lookup in the active catalogue. The image endpoints above accept
+generated image UUIDs; collection ID lookup currently runs outside the API.
+
 Example text request:
 
 ```sh

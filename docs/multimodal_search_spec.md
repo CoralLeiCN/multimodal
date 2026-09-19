@@ -295,6 +295,12 @@ Minimum SQLite tables:
 | Run reports | Each generation ID is also its run ID. SQLite holds generation status and per-image attempts; `runs/<run_id>.json` records indexed, embedded, and reused counts. |
 | `service_state` | Singleton row containing the active ready index version. |
 
+For agent requests containing a collection record ID such as `co25823`, use the
+[collection ID lookup procedure](collection_id_lookup.md). Match `record_uid`
+exactly within the active ready generation and return all distinct associated
+image UUIDs. This is a direct SQLite workflow using the existing schema; the
+text search API continues to perform semantic search.
+
 The separate cache database contains only `embedding_cache`: a unique key derived
 from the image checksum and embedding configuration fingerprint, checksum,
 configuration fingerprint, validated vector JSON, and creation time. It supports

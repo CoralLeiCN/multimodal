@@ -80,6 +80,10 @@ SQLite retains their source labels and date ranges.
 Date preprocessing follows the [data processing rules](data_processing_spec.md),
 including treating `c.1993` as 1993 for filtering while preserving its display text.
 
+For an exact collection ID such as `co25823`, follow the
+[SQLite image lookup guide](docs/collection_id_lookup.md). It includes a runnable
+command for agents and returns all matching images in the active catalogue.
+
 Pydantic Logfire traces API requests, Gemini embedding calls, indexing, and
 database operations. Cloud export uses separate local project credentials for
 the API and indexing, or `LOGFIRE_TOKEN` and `LOGFIRE_INDEXER_TOKEN` in `.env`.
