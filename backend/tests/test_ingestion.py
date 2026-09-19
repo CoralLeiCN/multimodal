@@ -26,7 +26,7 @@ def test_completed_run_publishes_and_reuses_embeddings(setup, cache_engine):
         )
 
 
-def test_resume_recovers_write_before_sqlite_update(setup):
+def test_resume_recovers_write_before_catalogue_update(setup):
     settings, engine, _selected, _report, generation_id, vectors, embeddings = setup
     with Session(engine) as session:
         generation = session.get(Generation, generation_id)

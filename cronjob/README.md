@@ -25,7 +25,7 @@ matched in full against the image root and its immediate extraction folders.
 
 `--metadata PATH` can be repeated for specific bronze exports. `--seed` changes
 the sample, `--scan-limit` accepts up to 10,000 records, and `--limit` accepts up
-to 1,000 images. `--prepare-only` saves the selection snapshot and SQLite tracking
+to 1,000 images. `--prepare-only` saves the selection snapshot and catalogue tracking
 rows without contacting Gemini or Qdrant.
 
 Each run prints its ID. Resume an interrupted or prepared run with:
@@ -39,10 +39,10 @@ thumbnails to Google and stores each successful embedding in the separate local
 `embedding_cache.sqlite3` database before
 upserting it to Qdrant. Stable point IDs make retries safe. An image becomes
 `indexed` only after its Qdrant point is confirmed. A complete generation becomes
-active in one SQLite transaction; failed runs retain the previous active index when using separate collections.
+active in one catalogue transaction; failed runs retain the previous active index when using separate collections.
 Permanent collection updates remain unavailable until successfully resumed.
 
-Outputs live under `data/search/`: `catalog.sqlite3`, `embedding_cache.sqlite3`, `selections/*.jsonl`,
+Outputs live under `data/search/`: `embedding_cache.sqlite3`, `selections/*.jsonl`,
 `runs/*.json`, and persistent Qdrant storage. Each JSONL selection row includes
 the local image path, checksum, source associations, licence, copyright, credit,
 and `filter_metadata`. Associations include original `date` text, `places`,
@@ -65,7 +65,7 @@ indexing runs. The example configuration enables this setting. If omitted, each
 run creates a separate collection using `QDRANT_COLLECTION_PREFIX`.
 
 To reuse an existing collection, set `QDRANT_COLLECTION_NAME` to its exact name
-and keep its original `SQLITE_PATH`. New runs reuse that collection's generation
+and use its shared Neon catalogue. New runs reuse that collection's generation
 and add or update selected images while retaining earlier images. Stable image
 IDs prevent duplicates and cached embeddings avoid repeated embedding requests.
 The selection limit applies to each sample; the accumulated collection may be larger.
@@ -84,7 +84,7 @@ run ID. `--prepare-only` also marks an existing permanent collection as building
 There is no rollback to a previous version of that same collection.
 
 The permanent collection requires the original embedding model and dimensions.
-A populated collection from another SQLite catalogue is rejected. Keep SQLite
+A populated collection from another catalogue is rejected. Keep the catalogue
 and Qdrant together when backing up or moving the index. Existing collections
 are not renamed, merged, or deleted automatically. Delete an obsolete collection
 only after the retained collection is complete and includes the images you need.
@@ -104,10 +104,10 @@ The command defaults to object exports under `data/bronze/` and scans at most
 1,000 records across those files. Repeat `--metadata PATH` to supply the original
 exports, or set `--scan-limit` from 1 to 10,000. It uses the saved source filename
 and record ID to find every selected association. If any are missing from the
-bounded scan, it exits before changing sample metadata. The SQLite migration
+bounded scan, it exits before changing sample metadata. The catalogue migration
 may already have added empty columns.
 
-Successful refreshes update SQLite fields and `selections/RUN_ID.jsonl`, ensure
+Successful refreshes update catalogue fields and `selections/RUN_ID.jsonl`, ensure
 the four Qdrant payload indexes exist, and replace metadata on existing points.
 They apply the [date processing rules](../data_processing_spec.md), including
 mapping `c.1993` without structured bounds to 1993–1993 for filtering.
@@ -117,7 +117,7 @@ remains pending until embedding ingestion completes.
 
 Stop the API before refreshing a published sample, then restart it after success.
 The command shares the ingestion writer lock. An interrupted Qdrant payload
-update can be repaired by rerunning the same command; SQLite retains the desired
+update can be repaired by rerunning the same command; the catalogue retains the desired
 metadata. The report contains `index_version`, `scanned`, `images`,
 `payloads_updated`, and `payload_indexes`. Exit codes are `0` for success and `2`
 for invalid inputs or failure. See [the source field mapping](../data_spec.md#search-filter-metadata)
@@ -125,14 +125,10 @@ and [filter semantics](../docs/multimodal_search_spec.md#metadata-filters).
 
 ## Share the catalogue
 
-See [the catalogue guide](../catalogue/README.md) to export or restore the shared
-SQLite snapshot in Git LFS. `python3 scripts/export_catalogue.py` creates a
-compressed backup at `catalogue/catalog.sqlite3.gz` from
-`data/search/catalog.sqlite3`. Use `--source` and `--output` for other paths.
-It copies the complete catalogue and checks its integrity. Cached vectors stay
-in the separate local `embedding_cache.sqlite3` file beside the catalogue.
-Migration `0003` moves legacy cache entries out of the catalogue once; apply it
-before exporting an older database. See the [upgrade instructions](../backend/README.md).
+Collaborators connect to the same Neon project and Qdrant collection using the
+[setup guide](../docs/neon_setup.md). SQLite remains the local embedding cache.
+Back up the catalogue through Neon or PostgreSQL tools and Qdrant separately.
+The [legacy snapshot](../catalogue/README.md) is an archive for one-time imports.
 
 ## Convert silver CSV to gold Parquet
 
@@ -292,3 +288,15 @@ uv run --with ruff ruff check cronjob/
 
 Tests use pytest fixtures for temporary metadata and image files. Ruff checks
 the standalone script against Python 3.12 compatibility.
+
+## Shared indexing on Neon
+
+Set `DATABASE_URL` and `DATABASE_URL_UNPOOLED` through the
+[Neon setup](../docs/neon_setup.md). These commands use the shared catalogue and
+Qdrant collection. Indexing and metadata refresh acquire the same database lock
+across collaborators; a second writer exits with an error. Dry runs stay local.
+Keep source exports and image files available on the indexing machine.
+
+`SEARCH_DATA_DIR` defaults to `data/search/` and holds the SQLite embedding cache,
+selection snapshots, and reports. `DATABASE_URL` is required for catalogue writes.
+Local Qdrant files are used only with local Qdrant.

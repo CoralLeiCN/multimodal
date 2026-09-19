@@ -8,7 +8,7 @@ by a year as that single year for filtering. For example, `c.1993` produces
 the source date remains approximate.
 
 Preserve the original date text, including `c.`, for display and provenance.
-Use the same numeric interval in SQLite and Qdrant. A filter containing 1993
+Use the same numeric interval in PostgreSQL and Qdrant. A filter containing 1993
 matches `c.1993`; a filter covering only 1992 or 1994 does not.
 
 Accept either case for `c.`, surrounding whitespace, and whitespace between

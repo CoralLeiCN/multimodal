@@ -2,7 +2,6 @@
 """Sample local images and ingest Gemini embeddings into Qdrant."""
 
 import argparse
-import fcntl
 import json
 import sys
 from pathlib import Path
@@ -10,6 +9,7 @@ from pathlib import Path
 import logfire
 from app.core.config import ROOT, Settings
 from app.core.db import make_engine, migrate
+from app.core.locking import ingestion_lock
 from app.core.telemetry import configure_telemetry
 from app.services.embeddings import GeminiEmbeddings, SearchError
 from app.services.ingestion import create_generation, run_ingestion
@@ -51,14 +51,7 @@ def main(argv=None):
     vectors = None
     generation_id = args.resume
     try:
-        settings.data_dir.mkdir(parents=True, exist_ok=True)
-        with (settings.data_dir / ".ingestion.lock").open("w") as lock:
-            try:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                raise ValueError(
-                    "Another indexing command is already running."
-                ) from None
+        with ingestion_lock(settings, shared=not args.dry_run):
             if not args.resume:
                 metadata = args.metadata or sorted(
                     (ROOT / "data/bronze").glob("smg_object_records*.json")

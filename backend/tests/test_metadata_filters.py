@@ -5,7 +5,7 @@ from app.main import create_app
 from app.models import Association, Generation, Image, Ingestion
 from app.schemas import MetadataFilters
 from app.services.ingestion import create_generation, run_ingestion
-from app.services.metadata import extract_metadata, sqlite_filter
+from app.services.metadata import catalogue_filter, extract_metadata
 from app.services.metadata_refresh import refresh_metadata
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -97,7 +97,7 @@ def test_invalid_filters(filters):
         MetadataFilters(**filters)
 
 
-def test_filter_semantics_match_qdrant_and_sqlite_before_top_k(setup):
+def test_filter_semantics_match_qdrant_and_postgres_before_top_k(setup):
     settings, engine, selected, report, _generation, vectors, embeddings = setup
     # Red has disjoint dates and a second association. Neither can bridge the gap
     # between London/1850 and Paris/1900 for a London/1900 request.
@@ -285,7 +285,7 @@ def test_refresh_preserves_vectors_and_ingestion_state(setup, tmp_path, ready):
                     session.exec(
                         select(Image).where(
                             Image.generation_id == generation_id,
-                            sqlite_filter(filters),
+                            catalogue_filter(filters),
                         )
                     ).all()
                 ) == expected

@@ -59,7 +59,7 @@ def test_search_spans_are_nested_and_exclude_request_content(setup, spans):
     request = next(s for s in exported if s.name == "POST /api/v1/search/text")
     search = next(s for s in exported if s.name == "search")
     query = next(s for s in exported if s.name == "qdrant.search")
-    lookup = next(s for s in exported if s.name == "sqlite.read_images")
+    lookup = next(s for s in exported if s.name == "catalogue.read_images")
     assert search.parent.span_id == request.context.span_id
     assert query.parent.span_id == lookup.parent.span_id == search.context.span_id
     assert secret not in json.dumps(

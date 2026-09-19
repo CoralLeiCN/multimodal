@@ -8,7 +8,9 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=(ROOT / ".env", ROOT / ".env.local"), extra="ignore"
+    )
 
     gemini_api_key: SecretStr | None = None
     logfire_token: SecretStr | None = None
@@ -25,7 +27,11 @@ class Settings(BaseSettings):
         default=None, pattern=r"^[A-Za-z0-9_-]{1,80}$"
     )
     qdrant_api_key: SecretStr | None = None
-    sqlite_path: Path = ROOT / "data/search/catalog.sqlite3"
+    search_data_dir: Path = ROOT / "data/search"
+    catalogue_database_url: SecretStr | None = Field(default=None, alias="DATABASE_URL")
+    direct_database_url: SecretStr | None = Field(
+        default=None, alias="DATABASE_URL_UNPOOLED"
+    )
     image_root: Path = ROOT / "data/images"
     max_image_bytes: int = 10 * 1024 * 1024
     max_image_pixels: int = 20_000_000
@@ -35,21 +41,33 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
-        return f"sqlite:///{self.absolute(self.sqlite_path)}"
+        if self.catalogue_database_url:
+            return postgres_url(self.catalogue_database_url)
+        raise ValueError(
+            "DATABASE_URL is required. Connect Neon with bun run neon link."
+        )
+
+    @property
+    def migration_database_url(self) -> str:
+        if self.catalogue_database_url and self.direct_database_url:
+            return postgres_url(self.direct_database_url)
+        if self.catalogue_database_url:
+            from sqlalchemy.engine import make_url
+
+            url = make_url(self.database_url)
+            if url.host and url.host.endswith(".neon.tech"):
+                return url.set(host=url.host.replace("-pooler.", ".")).render_as_string(
+                    hide_password=False
+                )
+        return self.database_url
 
     @property
     def data_dir(self) -> Path:
-        return self.absolute(self.sqlite_path).parent
+        return self.absolute(self.search_data_dir)
 
     @property
     def embedding_cache_path(self) -> Path:
-        path = (self.data_dir / "embedding_cache.sqlite3").resolve()
-        catalogue = self.absolute(self.sqlite_path)
-        if path == catalogue or (
-            path.exists() and catalogue.exists() and path.samefile(catalogue)
-        ):
-            raise ValueError("The embedding cache must be separate from the catalogue.")
-        return path
+        return self.data_dir / "embedding_cache.sqlite3"
 
     @property
     def config_hash(self) -> str:
@@ -57,3 +75,14 @@ class Settings(BaseSettings):
 
         value = f"{self.embedding_model}:{self.embedding_dimensions}:original-image-v1"
         return hashlib.sha256(value.encode()).hexdigest()
+
+
+def postgres_url(value: SecretStr) -> str:
+    from sqlalchemy.engine import make_url
+
+    url = make_url(value.get_secret_value())
+    if url.drivername not in ("postgres", "postgresql", "postgresql+psycopg"):
+        raise ValueError("DATABASE_URL must be a PostgreSQL connection URL.")
+    return url.set(drivername="postgresql+psycopg").render_as_string(
+        hide_password=False
+    )

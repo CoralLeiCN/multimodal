@@ -96,7 +96,7 @@ def refresh_metadata(
         )
         temporary.replace(snapshot)
 
-    # SQLite is the desired state. Retrying repairs an interrupted payload update.
+    # The Neon catalogue is the desired state. Retrying repairs an interrupted payload update.
     updated = 0
     for image in images:
         points = vectors.client.retrieve(

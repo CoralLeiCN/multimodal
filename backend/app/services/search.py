@@ -21,7 +21,7 @@ from app.schemas import (
     StatusResponse,
 )
 from app.services.embeddings import SearchError
-from app.services.metadata import labels, sqlite_filter
+from app.services.metadata import catalogue_filter, labels
 from app.services.selection import safe_path
 
 
@@ -109,7 +109,7 @@ class SearchService:
             message="Your collection is ready to explore.",
         )
 
-    @logfire.instrument("sqlite.read_images", extract_args=False)
+    @logfire.instrument("catalogue.read_images", extract_args=False)
     def read_images(
         self, generation: Generation, ids: list[str]
     ) -> dict[str, ImageRead]:
@@ -177,7 +177,7 @@ class SearchService:
             )
         return safe_path(self.settings, image.relative_path), image.mime_type
 
-    @logfire.instrument("sqlite.filter_options", extract_args=False)
+    @logfire.instrument("catalogue.filter_options", extract_args=False)
     def filter_options(self) -> FilterOptions:
         generation = self.generation()
         with Session(self.engine) as session:
@@ -195,7 +195,7 @@ class SearchService:
             date_max=max((item["date_to"] for item in ranges), default=None),
         )
 
-    @logfire.instrument("sqlite.browse", extract_args=False)
+    @logfire.instrument("catalogue.browse", extract_args=False)
     def browse(
         self,
         limit: int,
@@ -231,7 +231,7 @@ class SearchService:
                     409,
                 )
         with Session(self.engine) as session:
-            predicate = sqlite_filter(filters)
+            predicate = catalogue_filter(filters)
             matching = session.exec(
                 select(func.count())
                 .select_from(Image)

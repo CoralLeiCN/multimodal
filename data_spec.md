@@ -143,7 +143,7 @@ See [the script documentation](cronjob/README.md) for the output format.
 
 The search ingestion service reads filter metadata from the bronze JSON for its
 bounded image selection. It preserves identifiers, original date display text,
-and image rights in SQLite and the JSONL selection snapshot.
+and image rights in the SQL catalogue and the JSONL selection snapshot.
 
 | Search field | Source and interpretation |
 | --- | --- |
@@ -152,7 +152,7 @@ and image rights in SQLite and the JSONL selection snapshot.
 | `date_ranges` | `creation.date[]`, falling back to top-level `date[]` only when no creation dates exist. Use valid `from` and `to` years; ISO date bounds are reduced to years. If both bounds are absent, an exact year or ISO date in `value` is accepted. |
 
 Duplicate labels compare by Unicode NFKC normalization, collapsed whitespace,
-and case folding. Original display labels remain in SQLite. Dates must have
+and case folding. Original display labels remain in the SQL catalogue. Dates must have
 nonzero integer years between -9999 and 9999 and a start no later than the end.
 Partial, reversed, unknown, or unparseable dates contribute no interval.
 Without structured bounds, `c.1993` becomes the single-year interval 1993–1993
@@ -173,15 +173,11 @@ selected image rows, source associations, and filter metadata; images outside
 that sample remain present. Selection snapshots contain the accumulated catalogue.
 See [permanent collection setup](cronjob/README.md#permanent-collection).
 
-The shared `catalogue/catalog.sqlite3.gz` snapshot is tracked in Git LFS. It
-preserves the complete catalogue, including metadata and image attribution.
-Local ingestion stores cached vectors in the separate
-`data/search/embedding_cache.sqlite3` database. Migration `0003` transfers legacy
-cache entries and removes the old cache table and its unused pages from the
-catalogue. Subsequent exports copy the catalogue without filtering its rows.
-See the
-[export and restore guide](catalogue/README.md); the corresponding Qdrant
-collection and local thumbnails are required to use a restored index.
+The `catalogue/catalog.sqlite3.gz` file is a legacy archive tracked in Git LFS.
+Current catalogue sharing uses Neon. Cached vectors stay in the separate local
+`SEARCH_DATA_DIR/embedding_cache.sqlite3` database; `SEARCH_DATA_DIR` defaults to
+`data/search/`. Existing cache files are reused. See the
+[legacy archive guide](catalogue/README.md) for one-time catalogue imports.
 
 ## Operational tracing
 
@@ -192,3 +188,17 @@ error types or safe error codes. Traces exclude request arguments, query-string 
 bytes, embedding vectors, and raw exception messages. See
 [tracing configuration](backend/README.md#logfire-tracing) to enable or disable
 cloud export.
+
+## Shared catalogue storage
+
+`DATABASE_URL` is required. Neon PostgreSQL holds the image catalogue,
+record associations, source labels, attribution, index generations, ingestion
+ledger, and active generation. There is no SQLite catalogue fallback.
+Qdrant retains vectors and filter payloads. Image bytes, original exports, local
+embedding cache, and generated reports remain outside PostgreSQL.
+
+The [Neon migration](docs/neon_setup.md) copies a schema-0003 SQLite catalogue
+into an empty PostgreSQL catalogue in one transaction, preserving all catalogue
+fields and identifiers. It validates the source, verifies its active Qdrant
+collection, and compares every copied table's contents before committing.
+It neither generates embeddings nor updates Qdrant. Original files remain intact.

@@ -2,13 +2,13 @@
 """Set up date/place/category filters for an existing sample without embeddings."""
 
 import argparse
-import fcntl
 import json
 import sys
 from pathlib import Path
 
 from app.core.config import ROOT, Settings
 from app.core.db import make_engine, migrate
+from app.core.locking import ingestion_lock
 from app.services.embeddings import SearchError
 from app.services.metadata_refresh import refresh_metadata
 from app.services.qdrant_store import VectorStore
@@ -25,14 +25,7 @@ def main(argv=None):
     settings = Settings()
     engine = vectors = None
     try:
-        settings.data_dir.mkdir(parents=True, exist_ok=True)
-        with (settings.data_dir / ".ingestion.lock").open("w") as lock:
-            try:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                raise ValueError(
-                    "Another indexing command is already running."
-                ) from None
+        with ingestion_lock(settings):
             migrate(settings)
             engine = make_engine(settings)
             vectors = VectorStore(settings)

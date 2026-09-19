@@ -51,7 +51,7 @@ Keep downloaded assets and generated reports under the ignored `data/` directory
 
 When a user asks for images by an SMG collection record ID such as `co25823`,
 follow [the collection ID lookup procedure](docs/collection_id_lookup.md).
-Use an exact, parameterized SQLite match on `image_associations.record_uid` in
+Use an exact, parameterized PostgreSQL match on `image_associations.record_uid` in
 the active ready generation, returning all distinct associated images. Resolve
 their generated `image_id` UUIDs before using the image API routes. Report a
 missing catalogue separately from an ID with no indexed images. Use this route

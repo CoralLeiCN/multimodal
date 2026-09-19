@@ -22,3 +22,4 @@ node_modules/
 .ruff_cache/
 playwright-report/
 test-results/
+.neon

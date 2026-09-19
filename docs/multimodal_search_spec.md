@@ -2,7 +2,7 @@
 
 Status: the core prototype is implemented. See the [backend guide](../backend/README.md)
 and [frontend guide](../frontend/README.md) for the current run commands. The initial
-workflow selects 50 images and tracks each image through SQLite into Qdrant.
+workflow selects 50 images and tracks each image through the SQL catalogue into Qdrant.
 
 The [user feature document](user_features.md) describes what we want to build.
 This specification covers the current image search service. Use the root [Makefile](../Makefile) and
@@ -49,7 +49,7 @@ uses to find similar collection images. Uploaded images are not added to the col
 
 Use the [Full Stack FastAPI Template](https://github.com/fastapi/full-stack-fastapi-template)
 as the layout and integration reference. Record the upstream commit used when
-scaffolding. Adapt its database configuration to local SQLite and add Qdrant to
+scaffolding. Adapt its database configuration to Neon PostgreSQL and add Qdrant to
 the Compose services.
 
 | Layer | Technology | Project responsibility |
@@ -59,7 +59,7 @@ the Compose services.
 | Frontend | React, TypeScript, Vite | Search page, upload control, results grid, and image details. |
 | UI and data fetching | Tailwind CSS, shadcn/ui, TanStack Router and Query | Components, navigation, and asynchronous API state. |
 | API client | `@hey-api/openapi-ts` | Generate the frontend client from FastAPI's OpenAPI schema. |
-| Local database | SQLite, SQLModel, Alembic | Catalogue, ingestion status, retries, checkpoints, and schema migrations. |
+| Catalogue database | Neon PostgreSQL, SQLModel, Alembic | Catalogue, ingestion status, retries, checkpoints, and schema migrations. |
 | Vector database | Qdrant and `qdrant-client` | Persistent image vectors and cosine similarity queries. |
 | Embeddings | Gemini Embedding 2 and `google-genai` | Image and text embeddings in a shared space. |
 | Tracing | Pydantic Logfire and the `logfire[fastapi]` Python SDK | Trace API requests, AI calls, ingestion, and database operations. |
@@ -135,7 +135,7 @@ backend dependencies in `backend/pyproject.toml` and select versions compatible
 with this repository's Python requirement. Use the template's Bun workspace
 convention for `frontend`.
 
-Put SQLite table models in `models.py`, Pydantic API schemas in `schemas.py`, and
+Put catalogue table models in `models.py`, Pydantic API schemas in `schemas.py`, and
 settings in `core/config.py`. Keep routes thin: service modules implement
 selection, embedding, ingestion, and search. The cronjob entry point calls the
 same ingestion service. Generate `frontend/src/client/` from the API schema and
@@ -144,8 +144,8 @@ regenerate it whenever an endpoint contract changes.
 ## Architecture
 
 The React frontend calls FastAPI. FastAPI queries Qdrant for ranked image IDs and
-scores, then joins those IDs to the local SQLite catalogue for display metadata.
-SQLite records which image version has been successfully ingested into each
+scores, then joins those IDs to the SQL catalogue for display metadata.
+The SQL catalogue records which image version has been successfully ingested into each
 Qdrant collection. The separate indexing command updates both stores.
 
 ```mermaid
@@ -153,7 +153,7 @@ flowchart LR
     D[Local images and metadata] --> I[Bounded indexing command]
     I --> G[Gemini embedding API]
     G --> I
-    I --> S[SQLite catalogue and ingestion tracking]
+    I --> S[SQL catalogue and ingestion tracking]
     I --> Q[Qdrant vectors]
     B[React frontend] --> A[FastAPI backend]
     A --> G
@@ -164,13 +164,13 @@ flowchart LR
 ```
 
 At startup, the API reads the active index version and its Qdrant collection name
-from SQLite. It reads local image bytes when requested and keeps using that
+from the SQL catalogue. It reads local image bytes when requested and keeps using that
 generation until restarted. Indexing builds a new generation independently.
 
 Use Vite during frontend development, with `/api/v1` proxied to FastAPI. Serve the
 built React frontend through FastAPI for the local packaged application, following
 the template. API and image routes take precedence over the frontend route fallback.
-The browser accesses SQLite and Qdrant through the backend.
+The browser accesses the SQL catalogue and Qdrant through the backend.
 
 ## Bounded data selection
 
@@ -257,34 +257,45 @@ generation; reject incompatible settings. A model or image preprocessing change
 requires a new index generation. Keep the provider call behind an embedding
 adapter so tests can supply deterministic vectors.
 
-## SQLite ingestion tracking and Qdrant storage
+## SQL ingestion tracking and Qdrant storage
 
-Keep generated files beneath the ignored `data/search/` directory:
+`DATABASE_URL` is required for the shared Neon PostgreSQL catalogue. The application
+uses its pooled URL; migrations and the shared ingestion writer lock use
+`DATABASE_URL_UNPOOLED` (or the direct Neon hostname derived from `DATABASE_URL`).
+Settings load `.env`, then `.env.local`, then process environment overrides.
+PostgreSQL filters use JSONB array predicates with the same record and date
+interval boundaries as Qdrant. Missing or non-PostgreSQL database configuration
+fails clearly; no local catalogue is created.
+
+Follow [Neon setup and import](neon_setup.md). The import requires schema `0003`,
+a ready active generation, matching embedding settings, and verified Qdrant
+points. Copy all catalogue tables into an empty target transactionally; reject
+nonempty targets and compare all row contents before committing. Keep the source.
+Indexing and metadata refresh acquire a shared PostgreSQL advisory lock on a
+dedicated direct session. Startup schema migrations serialize with a separate
+transaction advisory lock. The embedding cache remains local.
+
+Keep generated files beneath `SEARCH_DATA_DIR`, defaulting to the ignored
+`data/search/` directory:
 
 ```text
 data/search/
-  catalog.sqlite3
   embedding_cache.sqlite3
   selections/<selection_id>.jsonl
   runs/<run_id>.json
   qdrant/
 ```
 
-`catalog.sqlite3` is the authoritative local catalogue and ingestion ledger.
-Share a compressed backup at `catalogue/catalog.sqlite3.gz` through Git LFS.
-`scripts/export_catalogue.py` copies the complete catalogue using SQLite's backup
-API. Validate integrity and foreign keys before replacing the snapshot. Cached
-embeddings live in a separate local database, `embedding_cache.sqlite3`, beside
-the catalogue. Reject exports containing the legacy cache table. Restore with
-`scripts/restore_catalogue.py`, which refuses to overwrite an existing database.
-The matching Qdrant collection and image files must be supplied separately.
+Neon is the authoritative catalogue and ingestion ledger. SQLite is used only
+for the separate local embedding cache. Existing cache files are reused. For an
+older custom `SQLITE_PATH`, set `SEARCH_DATA_DIR` to its parent directory.
+The legacy `catalogue/catalog.sqlite3.gz` archive and export/restore scripts are
+only for historical catalogue imports, not app startup or current backups.
+Use PostgreSQL or Neon backups for the catalogue and back up Qdrant separately.
+Allow one indexing writer, with network calls outside catalogue transactions.
+Use Alembic migrations for PostgreSQL schema changes.
 
-Enable foreign keys, a busy timeout, and WAL mode for concurrent API reads and
-short indexing transactions. Allow one indexing writer, with network calls outside
-database transactions. Use Alembic migrations for schema changes.
-[Source: SQLite WAL](https://www.sqlite.org/wal.html).
-
-Minimum SQLite tables:
+Minimum catalogue tables:
 
 | Table | Required fields and constraints |
 | --- | --- |
@@ -292,7 +303,7 @@ Minimum SQLite tables:
 | `image_associations` | Generation and image reference, source entry identifier, `record_uid`, `image_uid`, source JSON, title, description, original date text, JSON `places`, `categories`, and `date_ranges`, maker, catalogue identifiers, licence, copyright, and credit. |
 | `image_ingestions` | Unique `(index_version, image_id)`; image checksum, embedding configuration fingerprint, Qdrant collection and point ID, status, attempt count, last error, run ID, and timestamps including `indexed_at`. |
 | `index_generations` | Version, unique Qdrant collection name, model, dimension, preprocessing and query format versions, selection ID, status (`building`, `ready`, `failed`), count, and timestamps. |
-| Run reports | Each generation ID is also its run ID. SQLite holds generation status and per-image attempts; `runs/<run_id>.json` records indexed, embedded, and reused counts. |
+| Run reports | Each generation ID is also its run ID. The catalogue holds generation status and per-image attempts; `runs/<run_id>.json` records indexed, embedded, and reused counts. |
 | `service_state` | Singleton row containing the active ready index version. |
 
 For agent requests containing a collection record ID such as `co25823`, use the
@@ -328,7 +339,7 @@ one 1536-dimensional dense vector per image and `Cosine` distance. Validate the
 actual configured dimension and distance before writing or querying. Store
 `image_id`, `image_sha256`, `embedding_config_hash`, `index_version`,
 `metadata_schema_version: 1`, and `metadata` in the point payload. Keep full display
-metadata and source paths in SQLite. `metadata` mirrors `images.filter_metadata`.
+metadata and source paths in the catalogue. `metadata` mirrors `images.filter_metadata`.
 [Source: Qdrant collections](https://qdrant.tech/documentation/manage-data/collections/).
 
 Use `qdrant-client` to upsert points and `query_points` to search. The backend
@@ -338,7 +349,7 @@ the query. A missing catalogue association or point is an index consistency erro
 [Source: Qdrant query API](https://api.qdrant.tech/api-reference/search/query-points).
 
 With `QDRANT_COLLECTION_NAME` configured, ingestion reuses the generation owning
-that exact collection in SQLite, or creates one for an empty/new collection.
+that exact collection in the catalogue, or creates one for an empty/new collection.
 Selected images and associations are upserted, earlier images are retained, and
 the accumulated count and selection snapshot are updated. Embedding configuration
 must match. Foreign catalogue points are rejected before upserts. Reports and
@@ -356,7 +367,7 @@ only to separate collections.
 
 ## Ingestion lifecycle and recovery
 
-Track these per-image states in SQLite:
+Track these per-image states in the catalogue:
 
 | State | Meaning |
 | --- | --- |
@@ -376,13 +387,13 @@ cache database before recording `embedded` in the catalogue. These commits are
 separate; retries look up the cache even if the catalogue update was interrupted.
 Commit `upserting` before sending the point to Qdrant with `wait=True`. After the
 write completes, retrieve the point and verify its payload and vector shape, then
-commit `indexed` and `indexed_at` in SQLite. An acknowledgement that only queues
+commit `indexed` and `indexed_at` in the catalogue. An acknowledgement that only queues
 the write is insufficient. Repeating an upsert uses the same point ID.
 [Source: Qdrant upsert semantics](https://api.qdrant.tech/api-reference/points/upsert-points).
 
-SQLite and Qdrant have separate transactions. On resume, reconcile any interrupted
+The SQL catalogue and Qdrant have separate transactions. On resume, reconcile any interrupted
 `embedding` or `upserting` work. If the expected point already exists with the
-matching checksum and configuration, finish the SQLite update. Otherwise retry
+matching checksum and configuration, finish the catalogue update. Otherwise retry
 the upsert from the cached vector. If the interruption left no cached vector,
 return the image to `pending` and generate its embedding. Verify Qdrant points
 before skipping rows previously marked `indexed`; a local status alone does not
@@ -397,7 +408,7 @@ existing selection without re-embedding its images.
 
 Publish only when every selected image is `indexed`, Qdrant's point count matches
 the selection, and all expected IDs and payloads have been checked in bounded
-batches. Mark the generation `ready` and update `service_state` in one SQLite
+batches. Mark the generation `ready` and update `service_state` in one catalogue
 transaction. A failure keeps the previous active generation and its collection
 available; a zero-image selection is an error. Retain generations used by running
 API processes. Repair image selection or embedding changes in a new generation
@@ -406,9 +417,9 @@ with the API stopped, as described below.
 
 At startup, validate the active collection's configuration and reconcile its
 expected point IDs in bounded batches before enabling search. Report an unusable
-collection as unavailable. Browse and metadata endpoints can still use SQLite.
+collection as unavailable. Browse and metadata endpoints can still use the catalogue.
 `--resume <run_id>` verifies ready generations and repairs interrupted generations
-from the cache. Back up the SQLite database and Qdrant storage with their generation
+from the cache. Back up the catalogue database and Qdrant storage with their generation
 mapping, and validate that mapping after restoration.
 
 ## Metadata filters
@@ -442,7 +453,7 @@ upserting vectors. Existing indexes with incompatible types are an error.
 | `metadata[].date_to` | `integer` | End of that range. |
 
 Use Unicode NFKC normalization, collapsed whitespace, and case folding for both
-stored keywords and requests. Preserve source labels in SQLite for display.
+stored keywords and requests. Preserve source labels in the catalogue for display.
 Place names are exact labels; do not infer geographic ancestry or split a
 comma-separated source place into invented locations. Category names take
 precedence over category values. See [the source mapping](../data_spec.md#search-filter-metadata).
@@ -462,9 +473,9 @@ Combine fields with AND and values within each place/category field with OR.
 Wrap conditions in a Qdrant nested filter so all fields match the same catalogue
 association and date interval. Pass the filter into `query_points` before the
 result limit is applied. Similar-image search also excludes its source point.
-SQLite browsing uses equivalent JSON predicates, including the same association
+PostgreSQL browsing uses equivalent JSONB predicates, including the same association
 boundaries. Filter options list the active generation's available labels and
-year extrema; they do not change based on current filters. SQLite browsing and
+year extrema; they do not change based on current filters. Catalogue browsing and
 options remain usable during a Qdrant outage.
 [Sources: Qdrant payload indexes](https://qdrant.tech/documentation/manage-data/indexing/),
 [nested filters](https://qdrant.tech/documentation/search/filtering/).
@@ -473,12 +484,12 @@ Migration `0002` adds empty JSON metadata columns to existing catalogues. Backfi
 existing selections with `cronjob/refresh_image_metadata.py --generation RUN_ID`.
 It scans at most 1,000 metadata records by default, up to 10,000 with
 `--scan-limit`, and requires every selected association to be found before
-updating metadata. It updates the selection snapshot, SQLite metadata, and the
+updating metadata. It updates the selection snapshot, catalogue metadata, and the
 payloads of existing Qdrant points; vector values, embedding cache, IDs, and
 ingestion statuses are preserved. Prepared runs receive an empty indexed
 collection and remain pending. The command never reads or uploads image bytes.
 Stop the API before refreshing a published generation and restart after success.
-Retry the same command after an interruption to reconcile Qdrant with SQLite.
+Retry the same command after an interruption to reconcile Qdrant with the catalogue.
 
 ## HTTP API
 
@@ -543,7 +554,7 @@ Use a consistent error body with `code` and a safe, actionable `message`:
 | `503` | No usable index, incompatible configuration, or unavailable embedding provider or Qdrant service. |
 | `504` | Search exceeds the 30-second request deadline. |
 
-Browsing uses SQLite and local files. “Find similar” uses Qdrant and continues to
+Browsing uses the catalogue and local files. “Find similar” uses Qdrant and continues to
 work when Gemini is unavailable. Qdrant failure makes vector search unavailable
 while browsing remains usable. Search failure must be shown as an error. Serve
 files only through catalogue IDs with paths constrained to configured image roots.
@@ -555,7 +566,7 @@ the Python backend and AI workflows. Configure it once in each process using the
 service names `multimodal-api` and `multimodal-indexer`.
 
 Trace search requests and indexing runs, with child spans for Gemini embedding
-calls, Qdrant operations, and SQLite lookups. Record duration, model, embedding
+calls, Qdrant operations, and catalogue lookups. Record duration, model, embedding
 dimensions, retries, and success or failure. Include run and image identifiers
 where relevant so operators can investigate slow requests and failed ingestion.
 Keep credentials, request arguments, query-string values, headers, image bytes,
@@ -580,7 +591,7 @@ Follow [the Gemini API setup specification](gemini_api_spec.md) for credentials.
 Keep the key in the backend and indexing process environments. Google receives
 selected image bytes during indexing and query text or image bytes during search.
 Store the resulting vectors in local Qdrant or Qdrant Cloud and the catalogue and ingestion
-ledger in SQLite. Keep credentials in backend settings; frontend environment
+ledger in the SQL catalogue. Keep credentials in backend settings; frontend environment
 variables contain only public configuration such as the API base URL.
 
 Proposed configuration defaults:
@@ -592,7 +603,9 @@ Proposed configuration defaults:
 | Selected image limit | `50` |
 | Source scan limit | `1000` |
 | Search data directory | `data/search/` |
-| `SQLITE_PATH` | `data/search/catalog.sqlite3`, resolved from the repository root |
+| `DATABASE_URL` | Required PostgreSQL catalogue URL |
+| `DATABASE_URL_UNPOOLED` | Optional direct URL for migrations and writer locks |
+| `SEARCH_DATA_DIR` | `data/search/`, resolved from the repository root; local cache and reports |
 | `QDRANT_URL` | `http://127.0.0.1:6333` for processes on the host |
 | `QDRANT_COLLECTION_PREFIX` | `smg_images` |
 | `QDRANT_API_KEY` | Optional backend secret when the Qdrant instance requires authentication |
@@ -603,8 +616,8 @@ Proposed configuration defaults:
 Add a `qdrant` service to `compose.yml`. Pin its image to a tested release and
 persist `/qdrant/storage` through a bind mount at `data/search/qdrant/`. Publish
 the HTTP port as `127.0.0.1:6333:6333`. Containerized backend and indexing processes
-use `http://qdrant:6333`; host processes use `QDRANT_URL` above. Mount the same
-SQLite directory into both Python processes and resolve image roots consistently.
+use `http://qdrant:6333`; host processes use `QDRANT_URL` above. Configure the same Neon catalogue in both Python processes and resolve image
+roots consistently. Keep each indexing machine’s cache under `SEARCH_DATA_DIR`.
 [Source: Qdrant local setup](https://qdrant.tech/documentation/quickstart/).
 
 The following commands run from the repository root. The Compose configuration
@@ -615,7 +628,7 @@ uv sync --locked --all-packages
 bun install --frozen-lockfile
 docker compose up -d qdrant
 
-# Apply the SQLite schema migrations.
+# Apply the catalogue schema migrations.
 uv run --package multimodal-backend --env-file .env alembic -c backend/alembic.ini upgrade head
 
 # Preview a small selection and estimated request count without calling Gemini.
@@ -652,7 +665,7 @@ Build in this order:
 
 1. Scaffold `backend/` and `frontend/` from the template conventions, configure
    the uv and Bun workspaces, and add the local Qdrant Compose service.
-2. Implement SQLite migrations, bounded selection, ingestion states, and Qdrant
+2. Implement catalogue migrations, bounded selection, ingestion states, and Qdrant
    publication. Use a fake embedding adapter for automated tests.
 3. Connect Gemini and confirm a small text and image embedding run with matching
    vector dimensions before indexing the default sample.
@@ -666,13 +679,13 @@ Acceptance checks:
   identifiers, associations, rights fields, and empty metadata.
 - A restart reuses the published index; an unchanged indexing run reuses cached
   embeddings. An interrupted or failed run preserves the previous index.
-- SQLite records `indexed` only after a confirmed Qdrant write. Tests cover a
-  crash between the Qdrant write and SQLite update, repeated upserts, missing
+- The catalogue records `indexed` only after a confirmed Qdrant write. Tests cover a
+  crash between the Qdrant write and catalogue update, repeated upserts, missing
   points after a restore, and model or dimension mismatches.
 - Tests cover missing and ambiguous paths, corrupt files, symlink escapes,
   duplicate image references, invalid vectors, provider failures, and CLI codes.
 - Qdrant integration tests use known vectors to verify cosine ordering, ordering
-  of returned ties, limits, exclusion of the source image, and SQLite metadata
+  of returned ties, limits, exclusion of the source image, and catalogue metadata
   joins. Use exact Qdrant search for these small deterministic fixtures.
 - API tests cover upload limits, missing indexes, pagination, and error responses.
   The frontend loads only displayed images and handles stale search responses.
@@ -683,7 +696,7 @@ Acceptance checks:
 - A small, fixed set of queries has expected relevant images identified within
   the sample. Record recall at 10 and inspect the results before increasing the
   indexed collection; distinguish absent sample content from retrieval failures.
-- Measure Qdrant search and SQLite lookup separately from provider latency.
+- Measure Qdrant search and catalogue lookup separately from provider latency.
   Aim for under 200 ms at the 95th percentile for the default sample on the
   development machine, recording hardware and sample size with the measurements.
 - Extend pytest discovery to include `backend/tests/` alongside `cronjob/`.
@@ -692,3 +705,8 @@ Acceptance checks:
 
 Technical references checked on 19 September 2026. Live embeddings, performance,
 and search relevance remain to be validated during implementation.
+
+Database tests require `TEST_POSTGRES_URL` for a disposable PostgreSQL database
+using a direct connection. Tests create and remove isolated schemas; they never
+fall back to the application's `DATABASE_URL`. Local cache tests use temporary
+SQLite files. Legacy archive tests exercise only the one-time import workflow.

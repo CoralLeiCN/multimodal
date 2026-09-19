@@ -4,16 +4,21 @@ import subprocess
 import sys
 
 import pytest
+from app.core.config import Settings
+from app.core.db import make_cache_engine
 from app.models import EmbeddingCache
 from sqlmodel import Session
 
 from scripts.export_catalogue import ROOT, export_catalogue
 
 
-def test_export_copies_catalogue_and_preserves_separate_local_cache(
-    setup, cache_engine, tmp_path
-):
-    settings, _engine, _selected, _report, generation_id, *_ = setup
+def test_export_copies_legacy_catalogue_and_preserves_local_cache(tmp_path):
+    settings = Settings(_env_file=None, search_data_dir=tmp_path / "cache")
+    cache_engine = make_cache_engine(settings)
+    source = tmp_path / "legacy.sqlite3"
+    source.write_bytes(
+        gzip.decompress((ROOT / "catalogue/catalog.sqlite3.gz").read_bytes())
+    )
     cache_key = "private-local-cache-marker"
     with Session(cache_engine) as session:
         session.add(
@@ -23,7 +28,7 @@ def test_export_copies_catalogue_and_preserves_separate_local_cache(
         )
         session.commit()
     output = tmp_path / "catalog.sqlite3.gz"
-    export_catalogue(settings.sqlite_path, output)
+    export_catalogue(source, output)
     with Session(cache_engine) as session:
         assert session.get(EmbeddingCache, cache_key).vector == [1.0]
     contents = gzip.decompress(output.read_bytes())
@@ -36,11 +41,9 @@ def test_export_copies_catalogue_and_preserves_separate_local_cache(
         assert not db.execute(
             "SELECT 1 FROM sqlite_master WHERE name='embedding_cache'"
         ).fetchone()
-        assert db.execute("SELECT id FROM index_generations").fetchall() == [
-            (generation_id,)
-        ]
-        assert db.execute("SELECT count(*) FROM images").fetchone() == (3,)
-        assert db.execute("SELECT count(*) FROM image_associations").fetchone() == (3,)
+        assert db.execute("SELECT count(*) FROM images").fetchone()[0] > 0
+        assert db.execute("SELECT count(*) FROM image_associations").fetchone()[0] > 0
+    cache_engine.dispose()
 
 
 def test_export_failure_preserves_existing_snapshot(tmp_path):

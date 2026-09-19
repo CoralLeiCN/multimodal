@@ -4,14 +4,20 @@ This project aims to build multimodal search for the Science Museum Group collec
 
 See [the user features](docs/user_features.md) for what we want to build.
 
+## Shared catalogue on Neon
+
+The shared catalogue uses Neon PostgreSQL; Qdrant keeps the vectors. Collaborators
+connect to the same Neon branch and Qdrant collection. Follow the
+[Neon setup guide](docs/neon_setup.md) before running the app. Image files remain
+local under `IMAGE_ROOT`; source exports and cached embeddings remain local too.
+Reuse the shared index without running indexing again. `make setup` installs the project-local Neon CLI;
+run it with `bun run neon`, for example `bun run neon login`.
+
 ## Run locally
 
-To reuse the shared 452-image Qdrant Cloud index, follow the
-[catalogue restore guide](catalogue/README.md). Download its SQLite snapshot
-with Git LFS and restore it before starting the app. Local images and access
-to the matching cloud collection are required. Ingestion keeps cached embeddings
-in the separate, ignored `data/search/embedding_cache.sqlite3` file. The catalogue
-can be exported and shared as a complete database.
+Connect Neon using the [setup guide](docs/neon_setup.md). `DATABASE_URL` is
+required for the catalogue. Cached embeddings stay in the separate local
+`data/search/embedding_cache.sqlite3` file; `SEARCH_DATA_DIR` changes that folder.
 
 Run these commands from the project root. Install Python 3.12+, uv, Bun, Make,
 and Docker with Compose first, and start Docker. Make commands also find the
@@ -51,7 +57,7 @@ Restart the app after publishing a replacement index.
 
 Set `QDRANT_COLLECTION_NAME` in `.env` to reuse one collection across runs.
 The example uses `smg_images`; to retain an existing collection, use its exact
-name with its original SQLite catalogue. Ingestion adds or updates selected
+name with its matching catalogue. Ingestion adds or updates selected
 images and retains earlier images. Stop the API during these updates and restart
 it after completion. See [permanent collection setup](cronjob/README.md#permanent-collection).
 
@@ -59,7 +65,8 @@ For development, run `make backend` in one terminal and `make dev` in another,
 then open `http://127.0.0.1:5173`. Qdrant and an index are still needed for vector
 search. `make qdrant-down` stops the database and keeps its data.
 
-Use `make help` to list targets and `make check` for Python tests, lint checks,
+Set `TEST_POSTGRES_URL` to a disposable PostgreSQL database’s direct URL for
+backend tests. Use `make help` to list targets and `make check` for Python tests, lint checks,
 and the frontend build. Change the sample with
 `make preview-index LIMIT=20 SCAN_LIMIT=1000` and then the same options on
 `make index`. `INDEX_ARGS` passes extra selection options such as `--seed 7` or
@@ -69,14 +76,14 @@ and the frontend build. Change the sample with
 ## Collection Explorer
 
 The prototype has a React frontend and dedicated FastAPI search endpoints.
-SQLite tracks image ingestion; Qdrant stores the multimodal vectors. Start with
+The SQL catalogue tracks image ingestion; Qdrant stores the multimodal vectors. Start with
 a sample of 50 local images using the
 [backend setup guide](backend/README.md), then build or run the
 [frontend](frontend/README.md). The application is served at
 `http://127.0.0.1:8000`, with API documentation at `/docs`.
 Creation year, creation place, and category filters apply to browsing, text,
 image, and similar-image searches. Qdrant indexes these metadata fields and
-SQLite retains their source labels and date ranges.
+The SQL catalogue retains their source labels and date ranges.
 The left-edge Chat tab toggles a companion sidebar alongside the collection,
 so users can browse images while chatting. Replies currently use a local preview. The [frontend guide](frontend/README.md) describes its agent integration
 handler; the chat backend is not connected yet.
@@ -84,7 +91,7 @@ Date preprocessing follows the [data processing rules](data_processing_spec.md),
 including treating `c.1993` as 1993 for filtering while preserving its display text.
 
 For an exact collection ID such as `co25823`, follow the
-[SQLite image lookup guide](docs/collection_id_lookup.md). It includes a runnable
+[collection ID lookup guide](docs/collection_id_lookup.md). It includes a runnable
 command for agents and returns all matching images in the active catalogue.
 
 Pydantic Logfire traces API requests, Gemini embedding calls, indexing, and

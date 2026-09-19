@@ -1,17 +1,17 @@
 # Look up images by collection ID
 
 Use this route when a user supplies an SMG collection record ID such as
-`co25823` and asks for its images. Resolve the ID through the local SQLite
+`co25823` and asks for its images. Resolve the ID through the shared Neon PostgreSQL
 catalogue using exact equality on `image_associations.record_uid`.
 
 ## Identifier mapping
 
 | Identifier | Location and meaning |
 | --- | --- |
-| Collection record ID, such as `co25823` | Bronze `@admin.uid`, silver/gold `uid`, and SQLite `image_associations.record_uid` identify the same source record. |
-| Object number | Silver/gold `identifier` and SQLite `catalogue_identifiers` hold catalogue references such as accession numbers. |
-| Source image ID | Bronze `multimedia[*].@admin.uid` is preserved as SQLite `image_uid`. |
-| Indexed image UUID | SQLite `images.image_id` and the Qdrant point ID are generated from the thumbnail location. Image API routes accept this UUID. |
+| Collection record ID, such as `co25823` | Bronze `@admin.uid`, silver/gold `uid`, and PostgreSQL `image_associations.record_uid` identify the same source record. |
+| Object number | Silver/gold `identifier` and PostgreSQL `catalogue_identifiers` hold catalogue references such as accession numbers. |
+| Source image ID | Bronze `multimedia[*].@admin.uid` is preserved as PostgreSQL `image_uid`. |
+| Indexed image UUID | PostgreSQL `images.image_id` and the Qdrant point ID are generated from the thumbnail location. Image API routes accept this UUID. |
 
 A record can have several images, and an image can have several source
 associations. Return every distinct matching image in the active ready generation.
@@ -19,8 +19,9 @@ Scope joins by both `generation_id` and `image_id` to keep historical runs separ
 
 ## Agent lookup procedure
 
-1. Read the configured catalogue using `Settings` so `.env`, `SQLITE_PATH`, and
-   relative paths follow the backend configuration. Open SQLite in read-only mode.
+1. Read the configured catalogue using `Settings` and `make_engine` so the Neon
+   `DATABASE_URL` and image paths follow the backend configuration. Use a
+   read-only transaction with a consistent snapshot.
 2. Resolve `service_state.id = 1` to `index_generations.id` and require status
    `ready`. Report an unavailable catalogue separately from an unmatched ID.
 3. Match the supplied ID exactly in `image_associations.record_uid`, within that
@@ -35,9 +36,9 @@ Scope joins by both `generation_id` and `image_id` to keep historical runs separ
    `@admin.uid` separately and label those results as source records.
 
 The current text search endpoint embeds its query with Gemini. Collection ID
-lookup uses the SQLite procedure below; there is no dedicated collection ID API
+lookup uses the PostgreSQL procedure below; there is no dedicated collection ID API
 endpoint or search-box detection. It requires no Gemini request, Qdrant request,
-or reindexing. The image detail and file endpoints also read from SQLite and local
+or reindexing. The image detail and file endpoints also read from PostgreSQL and local
 files. Local thumbnails must be present to open the images. Preserve the source
 association's attribution and rights when presenting them; see
 [the data specification](../data_spec.md).
@@ -50,39 +51,40 @@ Run from the repository root after installing the backend dependencies. Replace
 ```sh
 uv run --package multimodal-backend python - co25823 <<'PY'
 import json
-import sqlite3
 import sys
 
 from app.core.config import Settings
+from app.core.db import make_engine
+from sqlalchemy import text
 
 settings = Settings()
-catalogue = settings.absolute(settings.sqlite_path)
+engine = make_engine(settings)
 record_uid = sys.argv[1].strip()
-connection = sqlite3.connect(catalogue.as_uri() + "?mode=ro")
-connection.row_factory = sqlite3.Row
+connection = engine.connect()
 try:
-    connection.execute("BEGIN")
-    generation = connection.execute(
+    connection.begin()
+    connection.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+    generation = connection.execute(text(
         """
         SELECT g.id, g.status
         FROM service_state AS s
         JOIN index_generations AS g ON g.id = s.active_generation
         WHERE s.id = 1
         """
-    ).fetchone()
+    )).mappings().first()
     if generation is None or generation["status"] != "ready":
         raise SystemExit("No active ready catalogue is available.")
-    rows = connection.execute(
+    rows = connection.execute(text(
         """
         SELECT DISTINCT i.image_id, i.title, i.relative_path
         FROM image_associations AS a
         JOIN images AS i
           ON i.generation_id = a.generation_id AND i.image_id = a.image_id
-        WHERE a.generation_id = ? AND a.record_uid = ?
+        WHERE a.generation_id = :generation_id AND a.record_uid = :record_uid
         ORDER BY i.image_id
-        """,
-        (generation["id"], record_uid),
-    ).fetchall()
+        """),
+        {"generation_id": generation["id"], "record_uid": record_uid},
+    ).mappings().all()
     images = []
     for row in rows:
         image = dict(row)
@@ -102,11 +104,11 @@ try:
     }, indent=2, ensure_ascii=False))
 finally:
     connection.close()
+    engine.dispose()
 PY
 ```
 
 An empty `images` array means no match in the active ready catalogue. A missing
-database or schema is a setup error. Restore the
-[shared catalogue](../catalogue/README.md#restore) or check `SQLITE_PATH` before
-retrying. Opening with `mode=ro` prevents a missing path from creating an empty
-database.
+connection or schema is a setup error. Check the
+[Neon setup](neon_setup.md) and `DATABASE_URL` before retrying. This lookup makes
+no schema or data changes.

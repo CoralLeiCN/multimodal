@@ -5,7 +5,8 @@ import unicodedata
 from calendar import monthrange
 
 from qdrant_client import models
-from sqlalchemy import func, select
+from sqlalchemy import Integer, cast, column, func, select
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.models import Image
 from app.schemas import MetadataFilters
@@ -140,16 +141,19 @@ def qdrant_filter(filters: MetadataFilters, exclude: str | None = None):
     return models.Filter(must=must, must_not=must_not) if must or must_not else None
 
 
-def sqlite_filter(filters: MetadataFilters):
-    """SQLite JSON predicates use the same record/interval boundaries as Qdrant."""
-    rows = func.json_each(Image.filter_metadata).table_valued("value").alias("metadata")
+def catalogue_filter(filters: MetadataFilters):
+    rows = (
+        func.jsonb_array_elements(cast(Image.filter_metadata, JSONB))
+        .table_valued(column("value", JSONB))
+        .alias("metadata")
+    )
     conditions = []
     for key in ("place", "category"):
         values = getattr(filters, key)
         if values:
-            entries = func.json_each(
-                func.json_extract(rows.c.value, f"$.{key}")
-            ).table_valued("value")
+            entries = func.jsonb_array_elements_text(rows.c.value[key]).table_valued(
+                "value"
+            )
             conditions.append(
                 select(1)
                 .select_from(entries)
@@ -159,11 +163,11 @@ def sqlite_filter(filters: MetadataFilters):
             )
     if filters.date_from is not None:
         conditions.append(
-            func.json_extract(rows.c.value, "$.date_to") >= filters.date_from
+            cast(rows.c.value["date_to"].astext, Integer) >= filters.date_from
         )
     if filters.date_to is not None:
         conditions.append(
-            func.json_extract(rows.c.value, "$.date_from") <= filters.date_to
+            cast(rows.c.value["date_from"].astext, Integer) <= filters.date_to
         )
     return (
         select(1).select_from(rows).where(*conditions).correlate(Image).exists()

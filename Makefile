@@ -15,7 +15,7 @@ INDEX_ARGS ?=
 help: ## Show commands; start with make setup
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  make %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-setup: ## Install locked Python/frontend dependencies and create .env if absent
+setup: ## Install locked Python/frontend dependencies and Neon CLI; create .env if absent
 	$(UV) sync --locked --all-packages
 	$(BUN) install --frozen-lockfile
 	@test -f .env || cp .env.example .env
@@ -45,7 +45,7 @@ backend: ## Run the API with reload on port 8000 (foreground)
 dev: ## Run Vite on port 5173; run make backend in another terminal
 	$(BUN) run dev
 
-test: ## Run Python tests with isolated services and no Gemini requests
+test: ## Run Python tests; requires a disposable TEST_POSTGRES_URL
 	$(UV) run pytest
 
 lint: ## Run Python and frontend lint checks

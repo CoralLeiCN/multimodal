@@ -44,7 +44,7 @@ class VectorStore:
                 ):
                     raise SearchError(
                         "The permanent collection belongs to another catalogue. "
-                        "Use its original SQLite database or an empty collection.",
+                        "Use its matching catalogue database or an empty collection.",
                         "index_mismatch",
                     )
                 if offset is None:
