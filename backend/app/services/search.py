@@ -80,7 +80,7 @@ class SearchService:
                 raise
             except Exception:  # noqa: BLE001 -- sanitize provider failures at the service boundary
                 raise SearchError(
-                    "The local vector database is unavailable. Browsing is still available.",
+                    "The Qdrant vector database is unavailable. Browsing is still available.",
                     "qdrant_unavailable",
                 ) from None
         return generation

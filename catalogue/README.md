@@ -58,6 +58,16 @@ collection. Your own unrelated Qdrant cluster will not contain its vectors.
 Set your own `GEMINI_API_KEY` for text and uploaded-image queries.
 Credentials are not included in this snapshot.
 
+If browsing works but search reports that Qdrant is unavailable, check that the
+active SQLite catalogue belongs to a collection that still exists in your
+configured cluster. `QDRANT_COLLECTION_NAME` selects the collection for ingestion;
+changing it does not switch the active catalogue used by search. To replace an
+older catalogue with this snapshot, stop the backend and ingestion, back up the
+existing catalogue with SQLite's backup API, remove the old database only after
+checking the backup, and run the restore command above. Keep the separate
+embedding cache. Restart the backend and check `/api/v1/status` for `ready` and
+452 indexed images.
+
 Place the extracted thumbnails under `data/images/`, preserving the directory
 layout described in [the data specification](../data_spec.md), then run
 `make run`. Skip `make index` when reusing this snapshot. Coordinate subsequent

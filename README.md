@@ -45,7 +45,8 @@ frontend and serves it through the backend in the foreground; press Ctrl+C to
 stop it. API documentation is at `http://127.0.0.1:8000/docs`.
 If port 8000 is occupied, use `make run PORT=8001` and open
 `http://127.0.0.1:8001`.
-On later launches, use `make qdrant-up` and `make run` to reuse the existing index.
+On later launches, use `make run` to reuse the existing cloud index. For local
+Qdrant, also run `make qdrant-up` first.
 Restart the app after publishing a replacement index.
 
 Set `QDRANT_COLLECTION_NAME` in `.env` to reuse one collection across runs.
