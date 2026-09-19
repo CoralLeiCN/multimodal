@@ -268,6 +268,14 @@ data/search/
 ```
 
 `catalog.sqlite3` is the authoritative local catalogue and ingestion ledger.
+Share a compressed backup at `catalogue/catalog.sqlite3.gz` through Git LFS.
+`scripts/export_catalogue.py` copies SQLite using its backup API, removes all
+embedding cache rows from the copy, and vacuums it to remove vector data from
+unused pages. Validate integrity and foreign keys before replacing the snapshot.
+The source database retains its enabled embedding cache. Restore with
+`scripts/restore_catalogue.py`, which refuses to overwrite an existing database.
+The matching Qdrant collection and image files must be supplied separately.
+
 Enable foreign keys, a busy timeout, and WAL mode for concurrent API reads and
 short indexing transactions. Allow one indexing writer, with network calls outside
 database transactions. Use Alembic migrations for schema changes.

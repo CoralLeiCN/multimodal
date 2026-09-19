@@ -6,6 +6,12 @@ See [the user features](docs/user_features.md) for what we want to build.
 
 ## Run locally
 
+To reuse the shared 452-image Qdrant Cloud index, follow the
+[catalogue restore guide](catalogue/README.md). Download its SQLite snapshot
+with Git LFS and restore it before starting the app. Local images and access
+to the matching cloud collection are required. The snapshot excludes cached
+embeddings; ingestion keeps its embedding cache in the ignored local database.
+
 Run these commands from the project root. Install Python 3.12+, uv, Bun, Make,
 and Docker with Compose first, and start Docker. Make commands also find the
 workspace's local Bun installation in `data/tools/node_modules/.bin` when present.
