@@ -68,8 +68,8 @@ then open `http://127.0.0.1:5173`. Qdrant and an index are still needed for vect
 search. `make qdrant-down` stops the database and keeps its data.
 
 Set `TEST_POSTGRES_URL` to a disposable PostgreSQL database’s direct URL for
-backend tests. Use `make help` to list targets and `make check` for Python tests, lint checks,
-and the frontend build. Change the sample with
+backend tests. Use `make help` to list targets grouped by task and `make check` for
+Python tests, lint checks, and the frontend build. Change the sample with
 `make preview-index LIMIT=20 SCAN_LIMIT=1000` and then the same options on
 `make index`. `INDEX_ARGS` passes extra selection options such as `--seed 7` or
 `--metadata path/to/export.json`; use the direct
