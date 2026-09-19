@@ -2,10 +2,11 @@ import pytest
 from app.models import EmbeddingCache, Generation, Image, Ingestion, ServiceState
 from app.services.embeddings import SearchError
 from app.services.ingestion import create_generation, run_ingestion
+from sqlalchemy import inspect
 from sqlmodel import Session, select
 
 
-def test_completed_run_publishes_and_reuses_embeddings(setup):
+def test_completed_run_publishes_and_reuses_embeddings(setup, cache_engine):
     settings, engine, selected, report, generation_id, vectors, embeddings = setup
     result = run_ingestion(engine, settings, generation_id, embeddings, vectors)
     assert result["indexed"] == result["embedded"] == 3
@@ -13,6 +14,10 @@ def test_completed_run_publishes_and_reuses_embeddings(setup):
     result = run_ingestion(engine, settings, replacement, embeddings, vectors)
     assert result["embedded"] == 0 and result["reused"] == 3
     assert embeddings.calls == 3
+    assert not inspect(engine).has_table("embedding_cache")
+    assert inspect(cache_engine).get_table_names() == ["embedding_cache"]
+    with Session(cache_engine) as session:
+        assert len(session.exec(select(EmbeddingCache)).all()) == 3
     with Session(engine) as session:
         assert session.get(ServiceState, 1).active_generation == replacement
         assert all(
@@ -41,11 +46,35 @@ def test_resume_recovers_write_before_sqlite_update(setup):
     assert embeddings.calls == 2
 
 
-def test_failed_generation_keeps_previous_active_index(setup):
+def test_resume_reuses_cache_committed_before_catalogue_update(setup, monkeypatch):
+    settings, engine, _selected, _report, generation_id, vectors, embeddings = setup
+    commit = Session.commit
+
+    def interrupt_catalogue_update(session):
+        if session.bind is engine and any(
+            isinstance(row, Ingestion) and row.status == "embedded"
+            for row in session.dirty
+        ):
+            raise KeyboardInterrupt("interrupted after committing the cache")
+        return commit(session)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Session, "commit", interrupt_catalogue_update)
+        with pytest.raises(KeyboardInterrupt):
+            run_ingestion(engine, settings, generation_id, embeddings, vectors)
+    assert embeddings.calls == 1
+    result = run_ingestion(engine, settings, generation_id, embeddings, vectors)
+    assert result["indexed"] == 3
+    assert result["reused"] == 1
+    assert result["embedded"] == 2
+    assert embeddings.calls == 3
+
+
+def test_failed_generation_keeps_previous_active_index(setup, cache_engine):
     settings, engine, selected, report, first, vectors, embeddings = setup
     run_ingestion(engine, settings, first, embeddings, vectors)
     second = create_generation(engine, settings, selected, report)
-    with Session(engine) as session:
+    with Session(cache_engine) as session:
         for cache in session.exec(select(EmbeddingCache)).all():
             session.delete(cache)
         session.commit()
@@ -99,11 +128,12 @@ def test_permanent_collection_adds_images_and_reuses_existing(setup):
     assert len([json.loads(line) for line in snapshot.read_text().splitlines()]) == 4
 
 
-def test_permanent_failure_can_resume_and_model_change_is_rejected(setup):
+def test_permanent_failure_can_resume_and_model_change_is_rejected(setup, cache_engine):
     settings, engine, selected, report, first, vectors, embeddings = setup
     run_ingestion(engine, settings, first, embeddings, vectors)
     with Session(engine) as session:
         settings.qdrant_collection_name = session.get(Generation, first).collection
+    with Session(cache_engine) as session:
         for cache in session.exec(select(EmbeddingCache)).all():
             session.delete(cache)
         session.commit()

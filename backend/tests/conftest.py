@@ -4,7 +4,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 import pytest
 from app.core.config import Settings
-from app.core.db import make_engine, migrate
+from app.core.db import make_cache_engine, make_engine, migrate
 from app.services.embeddings import SearchError
 from app.services.ingestion import create_generation
 from app.services.qdrant_store import VectorStore
@@ -91,4 +91,11 @@ def setup(tmp_path):
     embeddings = FakeEmbeddings()
     yield settings, engine, selected, report, generation_id, vectors, embeddings
     vectors.close()
+    engine.dispose()
+
+
+@pytest.fixture
+def cache_engine(setup):
+    engine = make_cache_engine(setup[0])
+    yield engine
     engine.dispose()

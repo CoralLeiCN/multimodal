@@ -4,6 +4,7 @@ from sqlalchemy import event
 from sqlmodel import create_engine
 
 from app.core.config import ROOT, Settings
+from app.models import EmbeddingCache
 
 
 def make_engine(settings: Settings):
@@ -17,6 +18,20 @@ def make_engine(settings: Settings):
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("PRAGMA journal_mode=WAL")
 
+    return engine
+
+
+def make_cache_engine(settings: Settings):
+    path = settings.embedding_cache_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    engine = create_engine(
+        f"sqlite:///{path}", connect_args={"check_same_thread": False, "timeout": 30}
+    )
+    try:
+        EmbeddingCache.metadata.create_all(engine)
+    except BaseException:
+        engine.dispose()
+        raise
     return engine
 
 

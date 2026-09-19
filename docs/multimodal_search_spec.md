@@ -262,6 +262,7 @@ Keep generated files beneath the ignored `data/search/` directory:
 ```text
 data/search/
   catalog.sqlite3
+  embedding_cache.sqlite3
   selections/<selection_id>.jsonl
   runs/<run_id>.json
   qdrant/
@@ -269,10 +270,10 @@ data/search/
 
 `catalog.sqlite3` is the authoritative local catalogue and ingestion ledger.
 Share a compressed backup at `catalogue/catalog.sqlite3.gz` through Git LFS.
-`scripts/export_catalogue.py` copies SQLite using its backup API, removes all
-embedding cache rows from the copy, and vacuums it to remove vector data from
-unused pages. Validate integrity and foreign keys before replacing the snapshot.
-The source database retains its enabled embedding cache. Restore with
+`scripts/export_catalogue.py` copies the complete catalogue using SQLite's backup
+API. Validate integrity and foreign keys before replacing the snapshot. Cached
+embeddings live in a separate local database, `embedding_cache.sqlite3`, beside
+the catalogue. Reject exports containing the legacy cache table. Restore with
 `scripts/restore_catalogue.py`, which refuses to overwrite an existing database.
 The matching Qdrant collection and image files must be supplied separately.
 
@@ -288,10 +289,23 @@ Minimum SQLite tables:
 | `images` | Primary key `(generation_id, image_id)`; normalized source location, relative local path, image SHA-256, MIME type, decoded width and height, and JSON `filter_metadata`. |
 | `image_associations` | Generation and image reference, source entry identifier, `record_uid`, `image_uid`, source JSON, title, description, original date text, JSON `places`, `categories`, and `date_ranges`, maker, catalogue identifiers, licence, copyright, and credit. |
 | `image_ingestions` | Unique `(index_version, image_id)`; image checksum, embedding configuration fingerprint, Qdrant collection and point ID, status, attempt count, last error, run ID, and timestamps including `indexed_at`. |
-| `embedding_cache` | Unique checksum plus embedding configuration fingerprint; validated vector JSON and creation time. Supports retries and reuse across generations. |
 | `index_generations` | Version, unique Qdrant collection name, model, dimension, preprocessing and query format versions, selection ID, status (`building`, `ready`, `failed`), count, and timestamps. |
 | Run reports | Each generation ID is also its run ID. SQLite holds generation status and per-image attempts; `runs/<run_id>.json` records indexed, embedded, and reused counts. |
 | `service_state` | Singleton row containing the active ready index version. |
+
+The separate cache database contains only `embedding_cache`: a unique key derived
+from the image checksum and embedding configuration fingerprint, checksum,
+configuration fingerprint, validated vector JSON, and creation time. It supports
+retries and reuse across generations and remains local when the catalogue is
+shared or replaced. Its SQLModel metadata is separate from the catalogue schema.
+Cache connections use a 30-second busy timeout.
+
+Migration `0003` copies legacy vectors to the cache database and commits them
+before dropping the catalogue's old cache table. Existing cache keys are retained.
+It compacts the catalogue once to remove old vector data from unused pages. A
+failed migration can be retried, including after the cache copy or table removal.
+Derive the cache path from the migration connection's actual catalogue path.
+Reject cache paths that refer to the catalogue itself.
 
 Derive `image_id` as a UUIDv5 from a fixed project namespace and the normalized
 source location. Use that UUID as the Qdrant point ID. Moving the repository or
@@ -349,7 +363,9 @@ Selection skips are counted by reason in the sampler report; only eligible
 selected images receive ingestion rows.
 
 For each selected image, check its checksum and embedding configuration. Reuse a
-matching cached vector, or embed the image and commit the vector to the cache.
+matching cached vector, or embed the image and commit the vector to the separate
+cache database before recording `embedded` in the catalogue. These commits are
+separate; retries look up the cache even if the catalogue update was interrupted.
 Commit `upserting` before sending the point to Qdrant with `wait=True`. After the
 write completes, retrieve the point and verify its payload and vector shape, then
 commit `indexed` and `indexed_at` in SQLite. An acknowledgement that only queues

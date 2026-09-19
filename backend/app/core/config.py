@@ -37,6 +37,16 @@ class Settings(BaseSettings):
         return self.absolute(self.sqlite_path).parent
 
     @property
+    def embedding_cache_path(self) -> Path:
+        path = (self.data_dir / "embedding_cache.sqlite3").resolve()
+        catalogue = self.absolute(self.sqlite_path)
+        if path == catalogue or (
+            path.exists() and catalogue.exists() and path.samefile(catalogue)
+        ):
+            raise ValueError("The embedding cache must be separate from the catalogue.")
+        return path
+
+    @property
     def config_hash(self) -> str:
         import hashlib
 

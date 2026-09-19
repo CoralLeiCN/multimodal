@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
+from typing import ClassVar
 
-from sqlalchemy import JSON, Column, ForeignKeyConstraint
+from sqlalchemy import JSON, Column, ForeignKeyConstraint, MetaData
 from sqlmodel import Field, SQLModel
 
 
@@ -93,6 +94,8 @@ class Ingestion(SQLModel, table=True):
 
 
 class EmbeddingCache(SQLModel, table=True):
+    # This table belongs exclusively to the local cache database.
+    metadata: ClassVar[MetaData] = MetaData()
     __tablename__ = "embedding_cache"
     key: str = Field(primary_key=True)
     checksum: str

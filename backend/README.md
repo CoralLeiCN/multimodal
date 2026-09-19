@@ -23,12 +23,28 @@ temporary failures. “Find similar” uses the stored Qdrant vector.
 The server applies the Alembic migration on startup. The ingestion command also
 applies it before creating a run. The SQLite path defaults to
 `data/search/catalog.sqlite3`; Qdrant persists under `data/search/qdrant/`.
-The [shared catalogue snapshot](../catalogue/README.md) is stored in Git LFS
-with an empty embedding cache. Ingestion continues to cache embeddings in the
-ignored local database; exported snapshots exclude those cached vectors.
+Cached embeddings live in `embedding_cache.sqlite3` beside the catalogue. This
+separate local database is ignored by Git. The
+[shared catalogue snapshot](../catalogue/README.md) in Git LFS contains the
+complete catalogue schema and data, with no embedding cache table.
 Use `SQLITE_PATH`, `IMAGE_ROOT`, `QDRANT_URL`, `QDRANT_API_KEY`, `EMBEDDING_MODEL`,
 and `EMBEDDING_DIMENSIONS` to override settings. Relative filesystem settings are
 resolved against the repository root.
+
+Migration `0003` moves existing cached vectors to the separate cache database
+before removing their old table from the catalogue. It preserves existing cache
+entries and compacts the catalogue once to remove old vector data from unused
+pages. Startup and ingestion apply this migration automatically. Stop other app
+and ingestion processes during the upgrade. To migrate explicitly, run:
+
+```sh
+uv run --package multimodal-backend alembic -c backend/alembic.ini upgrade head
+```
+
+The cache follows the directory containing `SQLITE_PATH`. Restoring or replacing
+the catalogue in that directory preserves the cache. Cache writes commit before
+ingestion records an image as embedded; retries can reuse the committed vector
+after an interruption.
 
 Embeddings default to 1,536 dimensions. Copy the Qdrant Cloud endpoint and API
 key into `QDRANT_URL` and `QDRANT_API_KEY` in `.env`; skip the Docker command

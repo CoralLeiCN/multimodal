@@ -1,4 +1,4 @@
-"""Export a SQLite backup for sharing, keeping cached embeddings local."""
+"""Export the catalogue SQLite database as a compressed snapshot for sharing."""
 
 import argparse
 import gzip
@@ -24,10 +24,13 @@ def export_catalogue(source: Path, output: Path) -> None:
             backup_path = Path(folder) / "catalog.sqlite3"
             with closing(sqlite3.connect(backup_path)) as backup:
                 original.backup(backup)
-                backup.execute("DELETE FROM embedding_cache")
-                backup.commit()
-                # Rebuild the file so deleted vectors cannot remain in unused pages.
-                backup.execute("VACUUM")
+                if backup.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='embedding_cache'"
+                ).fetchone():
+                    raise ValueError(
+                        "The source contains an embedding cache. Apply the catalogue "
+                        "schema migrations before exporting; use catalog.sqlite3 as the source."
+                    )
                 backup.execute("PRAGMA journal_mode=DELETE")
                 if backup.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
                     raise ValueError("The catalogue backup failed its integrity check.")
@@ -56,7 +59,7 @@ def main():
         export_catalogue(args.source, args.output)
     except (OSError, sqlite3.Error, ValueError) as error:
         parser.exit(1, f"Catalogue export failed: {error}\n")
-    print(f"Exported catalogue without cached embeddings: {args.output}")
+    print(f"Exported catalogue: {args.output}")
 
 
 if __name__ == "__main__":

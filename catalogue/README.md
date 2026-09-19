@@ -6,7 +6,7 @@ It lets collaborators use the existing Qdrant collection with their own local
 image files, without repeating embedding requests.
 
 The snapshot passed SQLite's integrity check and was verified against Qdrant
-Cloud. It is about 230 KB compressed and 836 KB restored. Its active index
+Cloud. It is about 236 KB compressed and 827 KB restored. Its active index
 contains **452 images**:
 
 | Setting | Value |
@@ -23,9 +23,9 @@ were verified before marking this snapshot ready. The other 48 selected images
 had no cloud vectors and are excluded. No embeddings were generated and no
 cloud data was changed during recovery.
 
-Older runs and cached embeddings are omitted from this snapshot. The
-`embedding_cache` table is empty. Local ingestion continues to populate and
-reuse that cache in `data/search/catalog.sqlite3`, which Git ignores. Search
+Older runs are omitted from this snapshot. Its schema is at migration `0003`
+and contains no embedding cache table. Local ingestion populates and reuses
+`data/search/embedding_cache.sqlite3`, a separate file ignored by Git. Search
 uses the vectors in Qdrant Cloud. The original local catalogue was preserved.
 
 ## Restore
@@ -70,7 +70,7 @@ subject to the source terms documented in [the data specification](../data_spec.
 SHA-256 of the restored SQLite file:
 
 ```text
-e88c496a361548824ffb302bb19a62360e410490555c511253cd8821c3b1b250
+86e105787bb44e403ff108b78ee910c9d3dfefbaf2d725b3d4893bd3ad0b398c
 ```
 
 ## Update the shared snapshot
@@ -87,11 +87,23 @@ git commit -m "update shared catalogue snapshot"
 git push
 ```
 
-The exporter uses SQLite's backup API, empties `embedding_cache` in the copy,
-and runs `VACUUM` to remove cached vectors from unused pages. It checks database
-integrity and foreign keys before replacing the compressed snapshot. The source
-database and its local embedding cache are preserved. Other catalogue tables
-and generations are retained. Git LFS tracks only the compressed snapshot.
+The exporter uses SQLite's backup API to copy the complete catalogue. It checks
+database integrity and foreign keys before replacing the compressed snapshot.
+The embedding cache is a separate local file, so exports need no row filtering.
+Git LFS tracks only the compressed catalogue snapshot. Restoring the catalogue
+preserves any existing local cache file.
+
+For a catalogue created before migration `0003`, stop app and ingestion processes
+and run this one-time upgrade before exporting:
+
+```sh
+uv run --package multimodal-backend alembic -c backend/alembic.ini upgrade head
+```
+
+The migration copies cached vectors into `embedding_cache.sqlite3` beside the
+catalogue, then removes the old table and compacts the catalogue. An interrupted
+upgrade can be retried. The exporter rejects older catalogues containing the
+cache table, as well as attempts to export the cache database itself.
 
 Update this guide's image count, collection settings, and restored SHA-256 when
 replacing the snapshot. Collaborators need the corresponding Qdrant collection

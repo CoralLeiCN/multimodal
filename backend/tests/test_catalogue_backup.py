@@ -10,12 +10,12 @@ from sqlmodel import Session
 from scripts.export_catalogue import ROOT, export_catalogue
 
 
-def test_export_preserves_local_cache_and_removes_vectors_from_snapshot(
-    setup, tmp_path
+def test_export_copies_catalogue_and_preserves_separate_local_cache(
+    setup, cache_engine, tmp_path
 ):
-    settings, engine, _selected, _report, generation_id, *_ = setup
+    settings, _engine, _selected, _report, generation_id, *_ = setup
     cache_key = "private-local-cache-marker"
-    with Session(engine) as session:
+    with Session(cache_engine) as session:
         session.add(
             EmbeddingCache(
                 key=cache_key, checksum="checksum", config_hash="config", vector=[1.0]
@@ -24,7 +24,7 @@ def test_export_preserves_local_cache_and_removes_vectors_from_snapshot(
         session.commit()
     output = tmp_path / "catalog.sqlite3.gz"
     export_catalogue(settings.sqlite_path, output)
-    with Session(engine) as session:
+    with Session(cache_engine) as session:
         assert session.get(EmbeddingCache, cache_key).vector == [1.0]
     contents = gzip.decompress(output.read_bytes())
     assert cache_key.encode() not in contents
@@ -33,7 +33,9 @@ def test_export_preserves_local_cache_and_removes_vectors_from_snapshot(
     with sqlite3.connect(restored) as db:
         assert db.execute("PRAGMA integrity_check").fetchone() == ("ok",)
         assert db.execute("PRAGMA foreign_key_check").fetchall() == []
-        assert db.execute("SELECT count(*) FROM embedding_cache").fetchone() == (0,)
+        assert not db.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='embedding_cache'"
+        ).fetchone()
         assert db.execute("SELECT id FROM index_generations").fetchall() == [
             (generation_id,)
         ]
@@ -67,7 +69,9 @@ def test_shared_snapshot_restores_without_cache_and_refuses_overwrite(tmp_path):
     before = output.read_bytes()
     with sqlite3.connect(output) as db:
         assert db.execute("PRAGMA integrity_check").fetchone() == ("ok",)
-        assert db.execute("SELECT count(*) FROM embedding_cache").fetchone() == (0,)
+        assert not db.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='embedding_cache'"
+        ).fetchone()
         assert db.execute("SELECT count(*) FROM images").fetchone()[0] > 0
     refused = subprocess.run(command, capture_output=True, text=True, check=False)
     assert refused.returncode == 1

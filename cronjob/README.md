@@ -35,13 +35,14 @@ uv run --package multimodal-backend cronjob/index_images.py --resume RUN_ID
 ```
 
 The ignored root `.env` supplies `GEMINI_API_KEY`. Indexing uploads the selected
-thumbnails to Google and stores each successful embedding in a SQLite cache before
+thumbnails to Google and stores each successful embedding in the separate local
+`embedding_cache.sqlite3` database before
 upserting it to Qdrant. Stable point IDs make retries safe. An image becomes
 `indexed` only after its Qdrant point is confirmed. A complete generation becomes
 active in one SQLite transaction; failed runs retain the previous active index when using separate collections.
 Permanent collection updates remain unavailable until successfully resumed.
 
-Outputs live under `data/search/`: `catalog.sqlite3`, `selections/*.jsonl`,
+Outputs live under `data/search/`: `catalog.sqlite3`, `embedding_cache.sqlite3`, `selections/*.jsonl`,
 `runs/*.json`, and persistent Qdrant storage. Each JSONL selection row includes
 the local image path, checksum, source associations, licence, copyright, credit,
 and `filter_metadata`. Associations include original `date` text, `places`,
@@ -120,8 +121,10 @@ See [the catalogue guide](../catalogue/README.md) to export or restore the share
 SQLite snapshot in Git LFS. `python3 scripts/export_catalogue.py` creates a
 compressed backup at `catalogue/catalog.sqlite3.gz` from
 `data/search/catalog.sqlite3`. Use `--source` and `--output` for other paths.
-It removes embedding cache rows from the copy and compacts it before writing;
-the local embedding cache stays enabled and its contents are preserved.
+It copies the complete catalogue and checks its integrity. Cached vectors stay
+in the separate local `embedding_cache.sqlite3` file beside the catalogue.
+Migration `0003` moves legacy cache entries out of the catalogue once; apply it
+before exporting an older database. See the [upgrade instructions](../backend/README.md).
 
 ## Convert silver CSV to gold Parquet
 

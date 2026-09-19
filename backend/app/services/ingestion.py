@@ -6,6 +6,7 @@ from uuid import uuid4
 from sqlmodel import Session, select
 
 from app.core.config import Settings
+from app.core.db import make_cache_engine
 from app.models import (
     Association,
     EmbeddingCache,
@@ -205,7 +206,9 @@ def run_ingestion(
         session.commit()
         session.refresh(generation)
     embedded = reused = 0
+    cache_engine = None
     try:
+        cache_engine = make_cache_engine(settings)
         save_selection(engine, settings, generation_id)
         vectors.ensure_collection(generation)
         for position, image in enumerate(images, 1):
@@ -231,8 +234,9 @@ def run_ingestion(
                     continue
             for attempt in range(3):
                 try:
+                    with Session(cache_engine) as cache_session:
+                        cache = cache_session.get(EmbeddingCache, cache_key)
                     with Session(engine, expire_on_commit=False) as session:
-                        cache = session.get(EmbeddingCache, cache_key)
                         tracking = session.get(
                             Ingestion, (generation_id, image.image_id)
                         )
@@ -256,8 +260,8 @@ def run_ingestion(
                             embeddings.embed(image=data, mime_type=image.mime_type),
                             generation.dimensions,
                         )
-                        with Session(engine, expire_on_commit=False) as session:
-                            session.add(
+                        with Session(cache_engine) as cache_session:
+                            cache_session.add(
                                 EmbeddingCache(
                                     key=cache_key,
                                     checksum=image.checksum,
@@ -265,6 +269,8 @@ def run_ingestion(
                                     vector=vector,
                                 )
                             )
+                            cache_session.commit()
+                        with Session(engine, expire_on_commit=False) as session:
                             tracking = session.get(
                                 Ingestion, (generation_id, image.image_id)
                             )
@@ -353,3 +359,6 @@ def run_ingestion(
                 session.add(generation)
                 session.commit()
         raise
+    finally:
+        if cache_engine is not None:
+            cache_engine.dispose()
