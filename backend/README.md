@@ -49,6 +49,8 @@ Embeddings default to 1,536 dimensions. Copy the Qdrant Cloud endpoint and API
 key into `QDRANT_URL` and `QDRANT_API_KEY` in `.env`; skip the Docker command
 when using Cloud. For local Docker, use `QDRANT_URL=http://127.0.0.1:6333` and
 an empty `QDRANT_API_KEY`. The `.env.example` values are placeholders.
+The Python client and local Docker server are pinned to Qdrant 1.19.1 to match
+the configured Cloud server. Keep these versions aligned when upgrading Qdrant.
 Changing dimensions requires a new indexing run and an API restart; existing
 768-dimensional vectors cannot be used with 1,536-dimensional queries.
 
