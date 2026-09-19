@@ -8,11 +8,14 @@ See [the user features](docs/user_features.md) for what we want to build.
 
 The shared catalogue uses Neon PostgreSQL; Qdrant keeps the vectors. Collaborators
 connect to the same Neon branch and Qdrant collection. Follow the
-[Neon setup guide](docs/neon_setup.md) before running the app. Configure R2 to
-load images directly from the private bucket through signed URLs. Indexing reads
+[Neon setup guide](docs/neon_setup.md) before running the app. Images load from
+`IMAGE_ROOT` (default `data/images/`) first. Configure R2 to serve missing local
+images directly from the private bucket through signed URLs. The API reuses
+signatures for four minutes and enables five-minute browser caching of image
+bytes. Indexing reads
 local images and automatically saves their R2 URLs in Neon using the migrated
 path layout, without checking R2.
-Local-only setups read images under `IMAGE_ROOT`; indexing still needs local
+Indexing still needs local
 source exports and images. See [R2 image delivery](backend/README.md#r2-catalogue-links)
 for configuration and catalogue linking.
 Reuse the shared index without running indexing again. `make setup` installs the project-local Neon CLI;

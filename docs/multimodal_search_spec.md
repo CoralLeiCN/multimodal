@@ -165,8 +165,8 @@ flowchart LR
 ```
 
 At startup, the API reads the active index version and its Qdrant collection name
-from the SQL catalogue. It resolves catalogued images to signed R2 URLs when configured,
-or reads local image bytes, and keeps using that
+from the SQL catalogue. It serves local image bytes first, falling back to signed
+R2 URLs for missing files when configured, and keeps using that
 generation until restarted. Indexing builds a new generation independently.
 
 Use Vite during frontend development, with `/api/v1` proxied to FastAPI. Serve the
@@ -318,13 +318,27 @@ optional prefix, and URL-encoded local relative path. It trusts that the complet
 upload matches the local files and makes no R2 requests. New and updated rows,
 resumed generations, and selection snapshots receive these URLs. Without an
 endpoint, new rows have no R2 link and changed paths or checksums clear old links.
-When R2 is configured and an image has a stored URL, the image API validates active catalogue
-membership and the configured object location, then returns a 307 redirect to a
-signed GET URL valid for 300 seconds. Redirect responses use `Cache-Control:
-no-store`. The frontend follows the redirect directly to the private R2 bucket.
-Missing credentials, invalid configuration, or conflicting stored URLs produce
+The image API validates active catalogue membership and resolves the image's
+`relative_path` under `IMAGE_ROOT` (default `data/images/`). Paths or symlinks
+outside that root are rejected. Existing local files are served first with
+`Cache-Control: private, max-age=300`, without initializing R2 or checking its
+credentials. If the file is missing, R2 is configured, and the image has a stored
+URL, the API validates the configured object location and returns a 307 redirect to a
+signed GET URL valid for 300 seconds. Each API process maintains a thread-safe
+cache of at most 2,048 URLs, keyed by the verified object URL, generation, and
+checksum. URLs are reused for 240 seconds from signing, with no extension on
+cache hits; the least recently used entry is evicted when full. Membership and
+reference checks run before cache lookup. Failed signatures are never cached,
+and shutdown clears the cache. Redirect responses use `Cache-Control: no-store`.
+Signed GET requests include `ResponseCacheControl=private, max-age=300`, so the
+browser can reuse image bytes at the same URL for five minutes. Cached bytes
+may remain usable after signature expiry; network downloads need a valid
+signature. The frontend follows the redirect directly to the private R2 bucket.
+There is no API disk cache or Cloudflare CDN configuration change.
+When cloud fallback is needed, missing credentials, invalid configuration, or conflicting stored URLs produce
 a sanitized 503 error. Unknown or inactive image IDs produce 404 before signing.
-With no R2 endpoint or no stored link, local file serving remains available.
+With no R2 endpoint or no stored link, missing local files return 404. Local
+files are checked on every API request, before consulting the signed URL cache.
 
 For agent requests containing a collection record ID such as `co25823`, use the
 [collection ID lookup procedure](collection_id_lookup.md). Match `record_uid`
@@ -520,7 +534,7 @@ client generation. Routes below use the frontend origin or the Vite API proxy.
 | `GET /api/v1/filters` | Active `index_version`, `places`, `categories`, `date_min`, and `date_max`. |
 | `GET /api/v1/images` | Browse with `limit`, optional `cursor`, `date_from`, `date_to`, repeated `place` and `category`; return items, `matching_images`, and the next cursor. |
 | `GET /api/v1/images/{image_id}` | Selected image metadata and its source associations. |
-| `GET /api/v1/images/{image_id}/file` | A temporary signed R2 redirect or validated local bytes for the requested active image ID. |
+| `GET /api/v1/images/{image_id}/file` | Validated local bytes first, then a temporary signed R2 redirect when missing locally, for the requested active image ID. |
 | `POST /api/v1/search/text` | JSON with `query`, optional `limit` and `filters` object; return ranked image results. |
 | `POST /api/v1/search/image` | Multipart upload with `image`, optional `limit`, `date_from`, `date_to`, and repeated `place` and `category` fields; return ranked results. |
 | `POST /api/v1/images/{image_id}/similar` | Optional JSON `limit` and `filters`; use the vector in Qdrant and exclude the selected image. |
@@ -571,7 +585,7 @@ Use a consistent error body with `code` and a safe, actionable `message`:
 | `503` | No usable index, incompatible configuration, or unavailable embedding provider or Qdrant service. |
 | `504` | Search exceeds the 30-second request deadline. |
 
-Browsing uses the catalogue and configured R2 delivery or local files. “Find similar” uses Qdrant and continues to
+Browsing uses the catalogue and local files, falling back to configured R2 delivery. “Find similar” uses Qdrant and continues to
 work when Gemini is unavailable. Qdrant failure makes vector search unavailable
 while browsing remains usable. Search failure must be shown as an error. Serve
 files only through catalogue IDs with paths constrained to configured image roots.

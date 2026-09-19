@@ -38,8 +38,9 @@ def test_paths_and_image_limits(setup, tmp_path):
     Image.new("RGB", (10, 10)).save(outside)
     (settings.image_root / "escape.png").symlink_to(outside)
     for relative in ("../secret.png", "escape.png"):
-        with pytest.raises(SearchError, match="unavailable"):
-            safe_path(settings, relative)
+        for must_exist in (True, False):
+            with pytest.raises(SearchError, match="unavailable"):
+                safe_path(settings, relative, must_exist=must_exist)
     with pytest.raises(SearchError) as error:
         validate_image(b"x" * (settings.max_image_bytes + 1), settings)
     assert error.value.status == 413

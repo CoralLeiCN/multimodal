@@ -28,10 +28,14 @@ the local relative path and optional prefix, trusting the completed migration
 without contacting R2. Embeddings still use local bytes. The optional linking
 command can audit remote SHA-256 metadata. This is not a public or expiring URL.
 The original `location`, `relative_path`, and image IDs keep their source meaning.
-When R2 is configured, the image endpoint uses the stored reference to generate
-a five-minute signed GET URL after checking active catalogue membership. Image
+After checking active catalogue membership, the image endpoint first serves
+the file at `IMAGE_ROOT/relative_path` (default root `data/images/`). If the file
+is missing and R2 is configured, it uses the stored reference to generate
+a five-minute signed GET URL. The
+API reuses signatures for four minutes and requests private browser caching of
+image bytes for five minutes; the bucket remains private. Image
 bytes load directly from the private bucket, with attribution retained in the
-app. Local-only configurations and unlinked rows use files under `IMAGE_ROOT`.
+app. Missing local files without an R2 link or configuration return 404.
 Only indexed catalogue rows receive links; uploading an image does not index it.
 See [R2 catalogue links](backend/README.md#r2-catalogue-links) for the mapping rule and optional audit command.
 

@@ -68,10 +68,10 @@ def validate_image(data: bytes, settings: Settings) -> tuple[str, int, int]:
         ) from None
 
 
-def safe_path(settings: Settings, relative: str) -> Path:
+def safe_path(settings: Settings, relative: str, *, must_exist: bool = True) -> Path:
     root = settings.absolute(settings.image_root)
     path = (root / relative).resolve()
-    if not path.is_relative_to(root) or not path.is_file():
+    if not path.is_relative_to(root) or (must_exist and not path.is_file()):
         raise SearchError("This collection image is unavailable.", "image_missing", 404)
     return path
 

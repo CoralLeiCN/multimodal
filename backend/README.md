@@ -64,7 +64,7 @@ publishing a replacement index. The frontend build is served at `/` when
 | `GET /api/v1/filters` | Available places, categories, and minimum/maximum years in the active sample. |
 | `GET /api/v1/images?limit=24` | Browse with an optional `cursor` and metadata filters; includes `matching_images`. |
 | `GET /api/v1/images/{image_id}` | Image metadata and attribution. |
-| `GET /api/v1/images/{image_id}/file` | Temporary signed R2 redirect for catalogued cloud images, or local image bytes. |
+| `GET /api/v1/images/{image_id}/file` | Validated local image bytes first, with a temporary signed R2 redirect when missing locally. |
 | `POST /api/v1/search/text` | Text query as JSON. |
 | `POST /api/v1/search/image` | Multipart image query. |
 | `POST /api/v1/images/{image_id}/similar` | Similar images using a stored vector. |
@@ -259,18 +259,33 @@ embedding settings. A shared catalogue does not distribute thumbnails.
 
 `images.r2_url` holds a permanent Cloudflare S3 object URL. It is
 nullable and separate from the source `location` and local `relative_path`.
-When `R2_ENDPOINT_URL` is configured and a row has an R2 URL, the API's
-`/file` route checks membership in the active generation and returns a 307
-redirect to a fresh signed GET URL, valid for five minutes. Redirects use
-`Cache-Control: no-store` so clients request a new signature when needed. The
+The API's `/file` route checks membership in the active generation and first
+looks for `IMAGE_ROOT/relative_path` (default root `data/images/`). An existing
+file is served locally with `Cache-Control: private, max-age=300`, even when
+R2 is configured or its credentials are unavailable. Paths and symlinks that
+escape `IMAGE_ROOT` are rejected. If the local file is missing,
+`R2_ENDPOINT_URL` is configured, and the row has an R2 URL, it returns a 307
+redirect to a signed GET URL, valid for five minutes. Each API process reuses
+up to 2,048 signed URLs for four minutes, evicting the least recently used entry
+when full. The cache key includes the object URL, generation, and checksum;
+hits still validate catalogue membership and the stored reference. Concurrent
+requests share one signature, and reuse stops one minute before expiry.
+Redirects use `Cache-Control: no-store` so clients return to the API for these
+checks. Signed requests set R2's `ResponseCacheControl` to
+`private, max-age=300`, allowing browsers to reuse downloaded image bytes for
+five minutes at the same signed URL. Cached bytes can remain usable after the
+signature expires; a new download requires a valid signature. This cache lives
+in each browser, with URL reuse held in each API process. It does not configure
+Cloudflare's CDN cache or persist image bytes on the API server. The
 browser downloads directly from the private bucket; credentials stay on the
 server. Browse and image-detail views work without local thumbnails.
 
 The stored URL must exactly match the configured endpoint, bucket, prefix, and
-relative path. Invalid configuration or a mismatched reference returns a
-sanitized 503 error. With no R2 endpoint or no R2 URL, the route uses
-the existing validated local file. Unknown or inactive image IDs return 404
-before signing. The app closes its shared R2 client on shutdown.
+relative path. When cloud fallback is needed, invalid configuration or a
+mismatched reference returns a sanitized 503 error. A missing local file with
+no R2 endpoint or no R2 URL returns 404. Local files are checked on every API
+request, including when a signed URL is already cached. Unknown or inactive image IDs return 404
+before signing. The app clears cached URLs and closes its shared R2 client on shutdown.
 
 Configure `R2_ENDPOINT_URL` (without the bucket path), `R2_BUCKET`,
 `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY` in `.env`. Keep `R2_PREFIX=` empty

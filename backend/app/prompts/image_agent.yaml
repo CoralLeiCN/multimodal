@@ -64,4 +64,3 @@ evaluate: |
   Do not penalize an explicit user override of brand defaults or absence of unrequested text.
   Accept if each applicable score is at least 70; otherwise propose one actionable
   revision prompt. Scores are guidance, not proof of compliance.
-

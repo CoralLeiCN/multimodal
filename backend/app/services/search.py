@@ -180,9 +180,12 @@ class SearchService:
                 "image_missing",
                 404,
             )
+        path = safe_path(self.settings, image.relative_path, must_exist=False)
+        if path.is_file():
+            return path, image.mime_type
         if url := self.image_delivery.signed_url(image):
             return url, image.mime_type
-        return safe_path(self.settings, image.relative_path), image.mime_type
+        raise SearchError("This collection image is unavailable.", "image_missing", 404)
 
     @logfire.instrument("catalogue.filter_options", extract_args=False)
     def filter_options(self) -> FilterOptions:
