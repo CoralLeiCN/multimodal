@@ -289,8 +289,8 @@ data/search/
 Neon is the authoritative catalogue and ingestion ledger. SQLite is used only
 for the separate local embedding cache. Existing cache files are reused. For an
 older custom `SQLITE_PATH`, set `SEARCH_DATA_DIR` to its parent directory.
-The legacy `catalogue/catalog.sqlite3.gz` archive and export/restore scripts are
-only for historical catalogue imports, not app startup or current backups.
+The repository contains no catalogue database snapshot. The legacy importer
+accepts an existing schema-0003 SQLite catalogue supplied with `--source`.
 Use PostgreSQL or Neon backups for the catalogue and back up Qdrant separately.
 Allow one indexing writer, with network calls outside catalogue transactions.
 Use Alembic migrations for PostgreSQL schema changes.
@@ -309,7 +309,7 @@ Minimum catalogue tables:
 For agent requests containing a collection record ID such as `co25823`, use the
 [collection ID lookup procedure](collection_id_lookup.md). Match `record_uid`
 exactly within the active ready generation and return all distinct associated
-image UUIDs. This is a direct SQLite workflow using the existing schema; the
+image UUIDs. This is a direct PostgreSQL workflow using the existing schema; the
 text search API continues to perform semantic search.
 
 The separate cache database contains only `embedding_cache`: a unique key derived
@@ -319,12 +319,9 @@ retries and reuse across generations and remains local when the catalogue is
 shared or replaced. Its SQLModel metadata is separate from the catalogue schema.
 Cache connections use a 30-second busy timeout.
 
-Migration `0003` copies legacy vectors to the cache database and commits them
-before dropping the catalogue's old cache table. Existing cache keys are retained.
-It compacts the catalogue once to remove old vector data from unused pages. A
-failed migration can be retried, including after the cache copy or table removal.
-Derive the cache path from the migration connection's actual catalogue path.
-Reject cache paths that refer to the catalogue itself.
+Migration `0003` removes the empty embedding cache table created by the initial
+PostgreSQL schema. It refuses to drop a nonempty cache table. Ingestion creates
+and reuses the separate local cache beneath `SEARCH_DATA_DIR`.
 
 Derive `image_id` as a UUIDv5 from a fixed project namespace and the normalized
 source location. Use that UUID as the Qdrant point ID. Moving the repository or
@@ -709,4 +706,4 @@ and search relevance remain to be validated during implementation.
 Database tests require `TEST_POSTGRES_URL` for a disposable PostgreSQL database
 using a direct connection. Tests create and remove isolated schemas; they never
 fall back to the application's `DATABASE_URL`. Local cache tests use temporary
-SQLite files. Legacy archive tests exercise only the one-time import workflow.
+SQLite files.

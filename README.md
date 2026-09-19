@@ -18,6 +18,8 @@ run it with `bun run neon`, for example `bun run neon login`.
 Connect Neon using the [setup guide](docs/neon_setup.md). `DATABASE_URL` is
 required for the catalogue. Cached embeddings stay in the separate local
 `data/search/embedding_cache.sqlite3` file; `SEARCH_DATA_DIR` changes that folder.
+The repository contains no catalogue database snapshot. Indexing reuses the
+local embedding cache to avoid repeating embedding requests.
 
 Run these commands from the project root. Install Python 3.12+, uv, Bun, Make,
 and Docker with Compose first, and start Docker. Make commands also find the

@@ -263,8 +263,7 @@ shared. A collaborator can resume using the shared ledger and their local image
 files; already verified Qdrant points are reused.
 
 Selection snapshots, embedding cache, and reports use `SEARCH_DATA_DIR`. Coordinate permanent collection
-updates and stop the API while updating that collection. The existing SQLite
-export/restore scripts operate only on SQLite files. Use Neon backup facilities
+updates and stop the API while updating that collection. Use Neon backup facilities
 or PostgreSQL tools for the shared database and back up Qdrant separately.
 
 For development that writes data, use a separate Neon branch and Qdrant

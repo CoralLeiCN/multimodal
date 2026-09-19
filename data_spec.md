@@ -173,11 +173,12 @@ selected image rows, source associations, and filter metadata; images outside
 that sample remain present. Selection snapshots contain the accumulated catalogue.
 See [permanent collection setup](cronjob/README.md#permanent-collection).
 
-The `catalogue/catalog.sqlite3.gz` file is a legacy archive tracked in Git LFS.
-Current catalogue sharing uses Neon. Cached vectors stay in the separate local
+Catalogue sharing uses Neon. The repository contains no catalogue database
+snapshot. Cached vectors stay in the separate local
 `SEARCH_DATA_DIR/embedding_cache.sqlite3` database; `SEARCH_DATA_DIR` defaults to
-`data/search/`. Existing cache files are reused. See the
-[legacy archive guide](catalogue/README.md) for one-time catalogue imports.
+`data/search/`. Existing cache files are reused during indexing. See the
+[import guide](backend/README.md#import-an-existing-sqlite-catalogue) for importing
+an existing legacy catalogue.
 
 ## Operational tracing
 

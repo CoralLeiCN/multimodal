@@ -128,7 +128,8 @@ and [filter semantics](../docs/multimodal_search_spec.md#metadata-filters).
 Collaborators connect to the same Neon project and Qdrant collection using the
 [setup guide](../docs/neon_setup.md). SQLite remains the local embedding cache.
 Back up the catalogue through Neon or PostgreSQL tools and Qdrant separately.
-The [legacy snapshot](../catalogue/README.md) is an archive for one-time imports.
+The repository contains no catalogue database snapshot. Preserve the local
+embedding cache to reuse completed embeddings during indexing.
 
 ## Convert silver CSV to gold Parquet
 
