@@ -214,7 +214,7 @@ the image paths and rights fields needed by the service.
 ## Embedding contract
 
 Use `gemini-embedding-2` through the existing `google-genai` dependency. Google
-documents shared text and image embeddings and supports 768 output dimensions,
+documents shared text and image embeddings and supports 1536 output dimensions,
 which is the proposed default for this service.
 [Source: Gemini Embedding 2](https://ai.google.dev/gemini-api/docs/models/gemini-embedding-2).
 
@@ -237,7 +237,7 @@ with genai.Client() as client:
         contents=types.Content(parts=[
             types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
         ]),
-        config=types.EmbedContentConfig(output_dimensionality=768),
+        config=types.EmbedContentConfig(output_dimensionality=1536),
     )
     vector = response.embeddings[0].values
 ```
@@ -292,7 +292,7 @@ results and retains its selected associations. Catalogue rows are scoped to a
 generation so building an index cannot change metadata served by an existing one.
 
 Each generation owns a Qdrant collection named `smg_images_<index_version>` with
-one 768-dimensional dense vector per image and `Cosine` distance. Validate the
+one 1536-dimensional dense vector per image and `Cosine` distance. Validate the
 actual configured dimension and distance before writing or querying. Store
 `image_id`, `image_sha256`, `embedding_config_hash`, `index_version`,
 `metadata_schema_version: 1`, and `metadata` in the point payload. Keep full display
@@ -500,7 +500,7 @@ files only through catalogue IDs with paths constrained to configured image root
 Follow [the Gemini API setup specification](gemini_api_spec.md) for credentials.
 Keep the key in the backend and indexing process environments. Google receives
 selected image bytes during indexing and query text or image bytes during search.
-Store the resulting vectors in local Qdrant and the catalogue and ingestion
+Store the resulting vectors in local Qdrant or Qdrant Cloud and the catalogue and ingestion
 ledger in SQLite. Keep credentials in backend settings; frontend environment
 variables contain only public configuration such as the API base URL.
 
@@ -509,7 +509,7 @@ Proposed configuration defaults:
 | Setting | Default |
 | --- | --- |
 | Embedding model | `gemini-embedding-2` |
-| Embedding dimensions | `768` |
+| Embedding dimensions | `1536` |
 | Selected image limit | `50` |
 | Source scan limit | `1000` |
 | Search data directory | `data/search/` |

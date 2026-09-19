@@ -13,11 +13,18 @@ workspace's local Bun installation in `data/tools/node_modules/.bin` when presen
 ```sh
 make setup
 # Edit .env and set GEMINI_API_KEY; setup preserves an existing .env.
+# For local Qdrant, set QDRANT_URL=http://127.0.0.1:6333 and QDRANT_API_KEY=
 make qdrant-up
 make preview-index
 make index
 make run
 ```
+
+For Qdrant Cloud, fill in `QDRANT_URL` and `QDRANT_API_KEY` in `.env` with your
+cluster endpoint and key, and skip `make qdrant-up`. The example configuration
+uses Cloud placeholders and 1,536 embedding dimensions. If an existing `.env`
+uses 768 dimensions, change `EMBEDDING_DIMENSIONS` to `1536`, build a new index
+with `make index`, and restart the app.
 
 Indexing requires the object JSON export under `data/bronze/` and extracted
 thumbnails under `data/images/`; see [data sources and paths](data_spec.md).

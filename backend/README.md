@@ -27,6 +27,13 @@ Use `SQLITE_PATH`, `IMAGE_ROOT`, `QDRANT_URL`, `QDRANT_API_KEY`, `EMBEDDING_MODE
 and `EMBEDDING_DIMENSIONS` to override settings. Relative filesystem settings are
 resolved against the repository root.
 
+Embeddings default to 1,536 dimensions. Copy the Qdrant Cloud endpoint and API
+key into `QDRANT_URL` and `QDRANT_API_KEY` in `.env`; skip the Docker command
+when using Cloud. For local Docker, use `QDRANT_URL=http://127.0.0.1:6333` and
+an empty `QDRANT_API_KEY`. The `.env.example` values are placeholders.
+Changing dimensions requires a new indexing run and an API restart; existing
+768-dimensional vectors cannot be used with 1,536-dimensional queries.
+
 The API pins a ready index once it becomes available. Restart the API after
 publishing a replacement index. The frontend build is served at `/` when
 `frontend/dist/` exists at backend startup.

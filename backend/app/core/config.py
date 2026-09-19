@@ -11,7 +11,7 @@ class Settings(BaseSettings):
 
     gemini_api_key: SecretStr | None = None
     embedding_model: str = "gemini-embedding-2"
-    embedding_dimensions: int = 768
+    embedding_dimensions: int = 1536
     qdrant_url: str = "http://127.0.0.1:6333"
     qdrant_collection_prefix: str = Field(
         default="smg_images", pattern=r"^[A-Za-z0-9_-]{1,80}$"
