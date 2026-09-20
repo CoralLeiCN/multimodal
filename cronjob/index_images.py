@@ -109,7 +109,14 @@ def main(argv=None):
             engine = make_engine(settings)
             migrate(settings)
             if args.limit is not None:
-                generation_id = create_generation(engine, settings, selected, report)
+                print("Saving selected images to the catalogue...", flush=True)
+                generation_id = create_generation(
+                    engine,
+                    settings,
+                    selected,
+                    report,
+                    progress=lambda message: print(message, flush=True),
+                )
             elif generation_id is None:
                 generation_id = saved_generation_id(engine, settings)
                 print(

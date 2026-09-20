@@ -58,6 +58,21 @@ The actual image count depends on eligible local files in the scanned records.
 `--prepare-only` saves the selection snapshot and catalogue tracking
 rows without contacting Gemini, Qdrant, or R2.
 
+After printing the selection summary, preparation saves images, source associations,
+and ingestion tracking rows with multi-row SQL statements in batches of up to 500
+images. Association inserts are also capped at 500 rows per statement. This batch
+size is independent of `--batch-size`, which controls Gemini requests. Progress
+reports each prepared batch as uncommitted, then confirms the catalogue commit.
+All batches share one transaction: a failure rolls back the whole selection update,
+including updates to an existing permanent collection.
+
+The JSONL selection snapshot uses batched image and association reads and streams
+to a temporary file before atomic replacement, with progress every 500 images.
+Snapshot failures preserve the previous file. A snapshot failure after the SQL
+commit leaves the catalogue saved; rerun without selection options (or with
+`--resume RUN_ID`) to continue. Embedding starts after preparation and the snapshot
+finish. Existing running commands retain the code they loaded at startup.
+
 Indexing defaults to 10 images per Gemini request and up to 10 concurrent batch
 workers. Set `--batch-size` from 1 to 100 and `--workers` from 1 to 10, or use:
 

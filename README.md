@@ -96,6 +96,9 @@ split into smaller requests. `BATCH_SIZE=1` sends one image per request, and
 `make preview-index LIMIT=5000 SCAN_LIMIT=50000`, then
 `make index LIMIT=5000 SCAN_LIMIT=50000 BATCH_SIZE=10 WORKERS=10`.
 The scan limit defaults to 1,000 records, so increase it along with the image limit.
+Catalogue preparation uses SQL batches of up to 500 images, with progress output
+for saving rows and writing the selection snapshot. The complete selection commits
+before embedding starts; `BATCH_SIZE` controls Gemini requests independently.
 `INDEX_ARGS` passes extra selection options such as `--seed 7` or
 `--metadata path/to/export.json`; use the direct
 [indexing command](cronjob/README.md#sample-and-index-images) to resume a run.

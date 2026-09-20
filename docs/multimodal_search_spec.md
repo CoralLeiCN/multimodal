@@ -221,9 +221,17 @@ per-image rights fields and [the project's data guidance](../data_spec.md) when
 selecting content for the intended use. Preserve supplied field values, including
 empty strings and original licence spelling.
 
+Save the selected catalogue in SQL batches of up to 500 images, with association
+inserts capped at 500 rows per statement. Keep all batches in one transaction so
+a preparation failure cannot publish a partial selection. Report batch progress
+and confirm the commit before embedding. Gemini's request batch size is independent
+of these catalogue batches.
+
 Write a selection snapshot before embedding. Store it under `data/search/` with
-the source paths, selection parameters, counts, and image checksums. Reuse that
-snapshot when resuming. Read metadata incrementally and decode at most the small
+the source paths and image checksums; keep selection counts in the catalogue.
+Fetch images and their associations in batches and stream JSONL to a temporary
+file, replacing the prior snapshot only on success. Resume from the saved catalogue
+rows, regenerating the snapshot. Read metadata incrementally and decode at most the small
 configured number of concurrent images. The full metadata and image collection
 must not be loaded into memory or indexed during web application startup.
 

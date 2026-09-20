@@ -1,14 +1,17 @@
 import hashlib
 import json
 import time
+from collections import defaultdict
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import ExitStack
 from contextvars import copy_context
-from itertools import islice
+from itertools import batched, islice
 from threading import Event, Lock
 from uuid import uuid4
 
 import logfire
+from sqlalchemy import case, delete, func
+from sqlalchemy.dialects.postgresql import insert
 from sqlmodel import Session, select
 
 from app.core.config import Settings
@@ -26,6 +29,9 @@ from app.services.embeddings import SearchError, normalize
 from app.services.metadata import filter_rows
 from app.services.r2_catalogue import r2_object_url
 from app.services.selection import safe_path
+
+# Bound SQL parameter counts independently of the paid embedding request size.
+CATALOGUE_BATCH_SIZE = 500
 
 
 def image_values(settings, item):
@@ -61,7 +67,7 @@ def saved_generation_id(engine, settings: Settings) -> str:
 
 
 def create_generation(
-    engine, settings: Settings, selected: list[dict], report: dict
+    engine, settings: Settings, selected: list[dict], report: dict, *, progress=None
 ) -> str:
     if not selected:
         raise ValueError("No eligible local images were found within the scan limit.")
@@ -77,7 +83,13 @@ def create_generation(
                     raise ValueError(
                         "Permanent collection requires the original embedding settings."
                     )
-                return extend_generation(engine, settings, existing.id, selected)
+                existing_id = existing.id
+            else:
+                existing_id = None
+        if existing_id:
+            return extend_generation(
+                engine, settings, existing_id, selected, progress=progress
+            )
     generation_id = uuid4().hex[:16]
     generation = Generation(
         id=generation_id,
@@ -93,36 +105,15 @@ def create_generation(
     with Session(engine, expire_on_commit=False) as session:
         session.add(generation)
         session.flush()
-        for item in selected:
-            values = image_values(settings, item)
-            image = Image(generation_id=generation_id, **values)
-            session.add(image)
-            session.flush()
-            for index, association in enumerate(item["associations"]):
-                session.add(
-                    Association(
-                        id=f"{generation_id}:{image.image_id}:{index}",
-                        generation_id=generation_id,
-                        image_id=image.image_id,
-                        **association,
-                    )
-                )
-            session.add(
-                Ingestion(
-                    generation_id=generation_id,
-                    image_id=image.image_id,
-                    checksum=image.checksum,
-                    config_hash=generation.config_hash,
-                    point_id=image.image_id,
-                    collection=generation.collection,
-                )
-            )
+        _save_catalogue_batches(session, settings, generation, selected, progress)
         session.commit()
-    save_selection(engine, settings, generation_id)
+    if progress:
+        progress(f"Catalogue committed: {len(selected)} selected images.")
+    save_selection(engine, settings, generation_id, progress=progress)
     return generation_id
 
 
-def extend_generation(engine, settings, generation_id, selected):
+def extend_generation(engine, settings, generation_id, selected, *, progress=None):
     """Upsert selected catalogue rows and retain all previously selected images."""
     with Session(engine) as session:
         generation = session.get(Generation, generation_id)
@@ -132,87 +123,144 @@ def extend_generation(engine, settings, generation_id, selected):
             None,
         )
         session.add(generation)
-        for item in selected:
-            image = session.get(Image, (generation_id, item["image_id"]))
-            values = image_values(settings, item)
-            if image is None:
-                image = Image(generation_id=generation_id, **values)
-            else:
-                if any(
-                    values.get(key, getattr(image, key)) != getattr(image, key)
-                    for key in ("relative_path", "checksum")
-                ):
-                    image.r2_url = None
-                for key, value in values.items():
-                    setattr(image, key, value)
-            session.add(image)
-            session.flush()
-            for association in session.exec(
-                select(Association).where(
-                    Association.generation_id == generation_id,
-                    Association.image_id == image.image_id,
-                )
-            ).all():
-                session.delete(association)
-            session.flush()
-            for index, association in enumerate(item["associations"]):
-                session.add(
-                    Association(
-                        id=f"{generation_id}:{image.image_id}:{index}",
-                        generation_id=generation_id,
-                        image_id=image.image_id,
-                        **association,
-                    )
-                )
-            tracking = session.get(Ingestion, (generation_id, image.image_id))
-            if tracking is None:
-                tracking = Ingestion(
-                    generation_id=generation_id,
-                    image_id=image.image_id,
-                    checksum=image.checksum,
-                    config_hash=generation.config_hash,
-                    collection=generation.collection,
-                    point_id=image.image_id,
-                )
-            tracking.checksum = image.checksum
-            session.add(tracking)
         session.flush()
-        images = session.exec(
-            select(Image).where(Image.generation_id == generation_id)
-        ).all()
-        generation.count = len(images)
+        _save_catalogue_batches(session, settings, generation, selected, progress)
+        generation.count = session.exec(
+            select(func.count())
+            .select_from(Image)
+            .where(Image.generation_id == generation_id)
+        ).one()
         session.add(generation)
         session.commit()
-    save_selection(engine, settings, generation_id)
+    if progress:
+        progress(f"Catalogue committed: {len(selected)} selected images.")
+    save_selection(engine, settings, generation_id, progress=progress)
     return generation_id
 
 
-def save_selection(engine, settings, generation_id):
-    rows = []
-    with Session(engine) as session:
-        for image in session.exec(
-            select(Image)
-            .where(Image.generation_id == generation_id)
-            .order_by(Image.image_id)
-        ).all():
-            row = image.model_dump(exclude={"generation_id"})
-            row["associations"] = [
-                association.model_dump(exclude={"id", "generation_id", "image_id"})
-                for association in session.exec(
-                    select(Association).where(
-                        Association.generation_id == generation_id,
-                        Association.image_id == image.image_id,
-                    )
-                ).all()
+def _save_catalogue_batches(session, settings, generation, selected, progress):
+    """Upsert each table in bounded statements within the caller's transaction."""
+    connection = session.connection()
+    completed = 0
+    for batch in batched(selected, CATALOGUE_BATCH_SIZE):
+        images = [
+            Image(
+                generation_id=generation.id, **image_values(settings, item)
+            ).model_dump()
+            for item in batch
+        ]
+        statement = insert(Image.__table__).values(images)
+        updates = {
+            name: statement.excluded[name]
+            for name in Image.model_fields
+            if name not in {"generation_id", "image_id"}
+        }
+        if not settings.r2_endpoint_url:
+            # Keep a previously verified URL only for unchanged local content.
+            updates["r2_url"] = case(
+                (
+                    (Image.relative_path == statement.excluded.relative_path)
+                    & (Image.checksum == statement.excluded.checksum),
+                    Image.r2_url,
+                ),
+                else_=None,
+            )
+        connection.execute(
+            statement.on_conflict_do_update(
+                index_elements=["generation_id", "image_id"], set_=updates
+            )
+        )
+        connection.execute(
+            delete(Association.__table__).where(
+                Association.generation_id == generation.id,
+                Association.image_id.in_([item["image_id"] for item in batch]),
+            )
+        )
+        associations = (
+            Association(
+                id=f"{generation.id}:{item['image_id']}:{index}",
+                generation_id=generation.id,
+                image_id=item["image_id"],
+                **association,
+            ).model_dump()
+            for item in batch
+            for index, association in enumerate(item["associations"])
+        )
+        for rows in batched(associations, CATALOGUE_BATCH_SIZE):
+            connection.execute(insert(Association.__table__).values(list(rows)))
+        tracking = insert(Ingestion.__table__).values(
+            [
+                Ingestion(
+                    generation_id=generation.id,
+                    image_id=item["image_id"],
+                    checksum=item["checksum"],
+                    config_hash=generation.config_hash,
+                    point_id=item["image_id"],
+                    collection=generation.collection,
+                ).model_dump()
+                for item in batch
             ]
-            rows.append(row)
+        )
+        # Existing status, attempts, and cache recovery state must survive resampling.
+        connection.execute(
+            tracking.on_conflict_do_update(
+                index_elements=["generation_id", "image_id"],
+                set_={"checksum": tracking.excluded.checksum},
+            )
+        )
+        completed += len(batch)
+        if progress:
+            progress(
+                f"Preparing catalogue [{completed}/{len(selected)}] images (uncommitted)."
+            )
+
+
+def save_selection(engine, settings, generation_id, *, progress=None):
+    """Stream a snapshot with two reads per image batch and atomic publication."""
     path = settings.data_dir / "selections" / f"{generation_id}.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".tmp")
-    temporary.write_text(
-        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows)
-    )
-    temporary.replace(path)
+    completed = 0
+    last_image_id = None
+    try:
+        with (
+            Session(engine) as session,
+            temporary.open("w", encoding="utf-8") as stream,
+        ):
+            while True:
+                query = select(Image).where(Image.generation_id == generation_id)
+                if last_image_id is not None:
+                    query = query.where(Image.image_id > last_image_id)
+                images = session.exec(
+                    query.order_by(Image.image_id).limit(CATALOGUE_BATCH_SIZE)
+                ).all()
+                if not images:
+                    break
+                associations = defaultdict(list)
+                for association in session.exec(
+                    select(Association)
+                    .where(
+                        Association.generation_id == generation_id,
+                        Association.image_id.in_([image.image_id for image in images]),
+                    )
+                    .order_by(Association.id)
+                ):
+                    associations[association.image_id].append(
+                        association.model_dump(
+                            exclude={"id", "generation_id", "image_id"}
+                        )
+                    )
+                for image in images:
+                    row = image.model_dump(exclude={"generation_id"})
+                    row["associations"] = associations[image.image_id]
+                    stream.write(json.dumps(row, ensure_ascii=False) + "\n")
+                completed += len(images)
+                last_image_id = images[-1].image_id
+                if progress:
+                    progress(f"Writing selection snapshot [{completed}] images.")
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 # Keep inline requests comfortably below the provider's encoded request limit.
