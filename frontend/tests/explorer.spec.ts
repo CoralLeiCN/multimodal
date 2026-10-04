@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 
 const image = { image_id: "11111111-1111-5111-8111-111111111111", title: "Brass microscope", image_url: "/api/v1/images/fixture/file", width: 100, height: 100,
-  associations: [{ record_uid: "co123", image_uid: "i1", title: "Microscope", description: "An optical instrument", date: "1850", maker: "Museum maker", places: ["London"], categories: ["Optics"], licence: "CC BY 4.0", credit: "Science Museum Group", copyright: "Museum", source_url: "https://collection.sciencemuseumgroup.org.uk/objects/co123" }] }
+  associations: [{ record_uid: "co123", image_uid: "i1", title: "Microscope", description: "An optical instrument", date: "1850", maker: "Museum maker", places: ["London"], categories: ["Optics"], licence: "CC BY 4.0", credit: "Science Museum Group", copyright: "© The Board of Trustees of the Science Museum", source_url: "https://collection.sciencemuseumgroup.org.uk/objects/co123" }] }
 
 export async function mockExplorer(page: Page, options: { signedOut?: boolean; pending?: boolean; loseResponse?: boolean } = {}) {
   let lost = false
@@ -55,6 +55,8 @@ test("explores a collection ID, renders evidence, and restores a follow-up conve
   await page.getByRole("button", {name: "Send exploration message"}).click()
   await expect(page.getByRole("log")).toContainText("catalogue identifies")
   await expect(page.getByRole("log").getByRole("link", {name: "co123"})).toHaveAttribute("href", image.associations[0].source_url)
+  await expect(page.getByRole("log").getByRole("link", {name: "CC BY 4.0", exact: true})).toHaveAttribute("href", "https://creativecommons.org/licenses/by/4.0/")
+  await expect(page.getByRole("log")).toContainText(image.associations[0].copyright)
   await page.reload()
   await page.getByRole("button", {name: "Open collection companion"}).click()
   await page.getByLabel("Collection conversation", {exact: true}).selectOption("chat-1")

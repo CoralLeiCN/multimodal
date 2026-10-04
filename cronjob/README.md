@@ -22,6 +22,9 @@ Original metadata is streamed and the full image archive is not loaded. The
 selection skips missing, ambiguous, corrupt, and unresolved-rights images. A
 shorter sample is reported if fewer eligible files are available. Paths are
 matched in full against the image root and its immediate extraction folders.
+Each selected image uses the first nonempty title among its retained associations,
+falling back to “Untitled image” when every title is empty. Source titles remain
+unchanged in the associations.
 
 Omit `--limit` to reuse the saved catalogue directly:
 

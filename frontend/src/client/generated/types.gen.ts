@@ -79,6 +79,16 @@ export type AssociationRead = {
 };
 
 /**
+ * Body_explorer_upload
+ */
+export type BodyExplorerUpload = {
+    /**
+     * Image
+     */
+    image: Blob | File;
+};
+
+/**
  * Body_search_image
  */
 export type BodySearchImage = {
@@ -219,6 +229,164 @@ export type ErrorResponse = {
 };
 
 /**
+ * ExplorerCancellation
+ */
+export type ExplorerCancellation = {
+    /**
+     * Status
+     */
+    status: 'cancelled';
+};
+
+/**
+ * ExplorerConversation
+ */
+export type ExplorerConversation = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Title
+     */
+    title: string;
+};
+
+/**
+ * ExplorerHistory
+ */
+export type ExplorerHistory = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Runs
+     */
+    runs: Array<ExplorerRun>;
+};
+
+/**
+ * ExplorerImage
+ */
+export type ExplorerImage = {
+    /**
+     * Image Id
+     */
+    image_id: string;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Image Url
+     */
+    image_url: string;
+    /**
+     * Width
+     */
+    width: number;
+    /**
+     * Height
+     */
+    height: number;
+    /**
+     * Associations
+     */
+    associations: Array<AssociationRead>;
+    /**
+     * Score
+     */
+    score?: number | null;
+    /**
+     * Index Version
+     */
+    index_version: string;
+};
+
+/**
+ * ExplorerLogout
+ */
+export type ExplorerLogout = {
+    /**
+     * Signed Out
+     */
+    signed_out: boolean;
+};
+
+/**
+ * ExplorerRun
+ */
+export type ExplorerRun = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Content
+     */
+    content: string;
+    /**
+     * Upload Id
+     */
+    upload_id: string | null;
+    /**
+     * Status
+     */
+    status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'timed_out';
+    /**
+     * Answer
+     */
+    answer: string;
+    /**
+     * Results
+     */
+    results: Array<ExplorerImage>;
+    /**
+     * Error
+     */
+    error: string | null;
+    /**
+     * Usage
+     */
+    usage: {
+        [key: string]: number;
+    };
+};
+
+/**
+ * ExplorerStatus
+ */
+export type ExplorerStatus = {
+    /**
+     * Authenticated
+     */
+    authenticated: boolean;
+    /**
+     * Ready
+     */
+    ready: boolean;
+    /**
+     * Auth Ready
+     */
+    auth_ready: boolean;
+};
+
+/**
+ * ExplorerUpload
+ */
+export type ExplorerUpload = {
+    /**
+     * Id
+     */
+    id: string;
+};
+
+/**
  * FilterOptions
  */
 export type FilterOptions = {
@@ -299,6 +467,20 @@ export type Login = {
 };
 
 /**
+ * Message
+ */
+export type Message = {
+    /**
+     * Content
+     */
+    content: string;
+    /**
+     * Upload Id
+     */
+    upload_id?: string | null;
+};
+
+/**
  * MessageInput
  */
 export type MessageInput = {
@@ -336,6 +518,16 @@ export type MetadataFilters = {
      * Category
      */
     category?: Array<string>;
+};
+
+/**
+ * NewConversation
+ */
+export type NewConversation = {
+    /**
+     * Title
+     */
+    title?: string;
 };
 
 /**
@@ -1385,3 +1577,243 @@ export type SendMessageResponses = {
      */
     202: unknown;
 };
+
+export type ExplorerStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/explorer/status';
+};
+
+export type ExplorerStatusResponses = {
+    /**
+     * Successful Response
+     */
+    200: ExplorerStatus;
+};
+
+export type ExplorerStatusResponse = ExplorerStatusResponses[keyof ExplorerStatusResponses];
+
+export type ExplorerLoginData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/explorer/auth/login';
+};
+
+export type ExplorerCallbackData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/explorer/auth/callback';
+};
+
+export type ExplorerLogoutData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/explorer/auth/logout';
+};
+
+export type ExplorerLogoutResponses = {
+    /**
+     * Successful Response
+     */
+    200: ExplorerLogout;
+};
+
+export type ExplorerLogoutResponse = ExplorerLogoutResponses[keyof ExplorerLogoutResponses];
+
+export type ExplorerConversationsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/explorer/conversations';
+};
+
+export type ExplorerConversationsResponses = {
+    /**
+     * Response Explorer Conversations
+     *
+     * Successful Response
+     */
+    200: Array<ExplorerConversation>;
+};
+
+export type ExplorerConversationsResponse = ExplorerConversationsResponses[keyof ExplorerConversationsResponses];
+
+export type ExplorerCreateData = {
+    body: NewConversation;
+    path?: never;
+    query?: never;
+    url: '/api/v1/explorer/conversations';
+};
+
+export type ExplorerCreateErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ExplorerCreateError = ExplorerCreateErrors[keyof ExplorerCreateErrors];
+
+export type ExplorerCreateResponses = {
+    /**
+     * Successful Response
+     */
+    201: ExplorerConversation;
+};
+
+export type ExplorerCreateResponse = ExplorerCreateResponses[keyof ExplorerCreateResponses];
+
+export type ExplorerHistoryData = {
+    body?: never;
+    path: {
+        /**
+         * Conversation Id
+         */
+        conversation_id: string;
+    };
+    query?: never;
+    url: '/api/v1/explorer/conversations/{conversation_id}';
+};
+
+export type ExplorerHistoryErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ExplorerHistoryError = ExplorerHistoryErrors[keyof ExplorerHistoryErrors];
+
+export type ExplorerHistoryResponses = {
+    /**
+     * Successful Response
+     */
+    200: ExplorerHistory;
+};
+
+export type ExplorerHistoryResponse = ExplorerHistoryResponses[keyof ExplorerHistoryResponses];
+
+export type ExplorerSubmitData = {
+    body: Message;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path: {
+        /**
+         * Conversation Id
+         */
+        conversation_id: string;
+    };
+    query?: never;
+    url: '/api/v1/explorer/conversations/{conversation_id}/messages';
+};
+
+export type ExplorerSubmitErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ExplorerSubmitError = ExplorerSubmitErrors[keyof ExplorerSubmitErrors];
+
+export type ExplorerSubmitResponses = {
+    /**
+     * Successful Response
+     */
+    202: ExplorerRun;
+};
+
+export type ExplorerSubmitResponse = ExplorerSubmitResponses[keyof ExplorerSubmitResponses];
+
+export type ExplorerCancelData = {
+    body?: never;
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+    };
+    query?: never;
+    url: '/api/v1/explorer/runs/{run_id}/cancel';
+};
+
+export type ExplorerCancelErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ExplorerCancelError = ExplorerCancelErrors[keyof ExplorerCancelErrors];
+
+export type ExplorerCancelResponses = {
+    /**
+     * Successful Response
+     */
+    200: ExplorerCancellation;
+};
+
+export type ExplorerCancelResponse = ExplorerCancelResponses[keyof ExplorerCancelResponses];
+
+export type ExplorerEventsData = {
+    body?: never;
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+    };
+    query?: never;
+    url: '/api/v1/explorer/runs/{run_id}/events';
+};
+
+export type ExplorerEventsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ExplorerEventsError = ExplorerEventsErrors[keyof ExplorerEventsErrors];
+
+export type ExplorerEventsResponses = {
+    /**
+     * Successful Response
+     */
+    200: string;
+};
+
+export type ExplorerEventsResponse = ExplorerEventsResponses[keyof ExplorerEventsResponses];
+
+export type ExplorerUploadData = {
+    body: BodyExplorerUpload;
+    path?: never;
+    query?: never;
+    url: '/api/v1/explorer/uploads';
+};
+
+export type ExplorerUploadErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ExplorerUploadError = ExplorerUploadErrors[keyof ExplorerUploadErrors];
+
+export type ExplorerUploadResponses = {
+    /**
+     * Successful Response
+     */
+    201: ExplorerUpload;
+};
+
+export type ExplorerUploadResponse = ExplorerUploadResponses[keyof ExplorerUploadResponses];

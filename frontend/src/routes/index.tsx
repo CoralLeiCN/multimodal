@@ -324,6 +324,7 @@ export function CollectionPage({
               </span>
               <span className="sample-pill">
                 <span />
+                {health.data?.sample ? "Sample · " : ""}
                 {health.data?.indexed_images ?? 0} images
               </span>
             </div>

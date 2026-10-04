@@ -3,19 +3,30 @@ import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import ValidationError
 
 from app.explore import auth
 from app.explore.concurrency import blocking
-from app.explore.contracts import Message, NewConversation, ToolCall
+from app.explore.contracts import (
+    ExplorerCancellation,
+    ExplorerConversation,
+    ExplorerHistory,
+    ExplorerLogout,
+    ExplorerRun,
+    ExplorerStatus,
+    ExplorerUpload,
+    Message,
+    NewConversation,
+    ToolCall,
+)
 
 router = APIRouter(prefix="/explorer", tags=["explorer"])
 User = Annotated[str, Depends(auth.principal)]
 Writer = Annotated[str, Depends(auth.mutation)]
 
 
-@router.get("/status")
+@router.get("/status", response_model=ExplorerStatus)
 def explorer_status(request: Request):
     settings = request.app.state.explorer.settings
     try:
@@ -30,39 +41,43 @@ def explorer_status(request: Request):
     }
 
 
-@router.get("/auth/login")
+@router.get("/auth/login", response_class=RedirectResponse, status_code=307)
 def explorer_login(request: Request):
     return auth.login(request.app.state.explorer.settings)
 
 
-@router.get("/auth/callback")
+@router.get("/auth/callback", response_class=RedirectResponse, status_code=303)
 async def explorer_callback(request: Request):
     return await auth.callback(request, request.app.state.explorer.settings)
 
 
-@router.post("/auth/logout")
+@router.post("/auth/logout", response_model=ExplorerLogout)
 def explorer_logout(request: Request, owner: Writer):
     response = JSONResponse({"signed_out": True})
     response.delete_cookie(auth.COOKIE, path="/")
     return response
 
 
-@router.get("/conversations")
+@router.get("/conversations", response_model=list[ExplorerConversation])
 def explorer_conversations(request: Request, owner: User):
     return request.app.state.explorer.list(owner)
 
 
-@router.post("/conversations", status_code=201)
+@router.post("/conversations", status_code=201, response_model=ExplorerConversation)
 def explorer_create(request: Request, owner: Writer, body: NewConversation):
     return request.app.state.explorer.create(owner, body.title)
 
 
-@router.get("/conversations/{conversation_id}")
+@router.get("/conversations/{conversation_id}", response_model=ExplorerHistory)
 def explorer_history(request: Request, owner: User, conversation_id: str):
     return request.app.state.explorer.history(owner, conversation_id)
 
 
-@router.post("/conversations/{conversation_id}/messages", status_code=202)
+@router.post(
+    "/conversations/{conversation_id}/messages",
+    status_code=202,
+    response_model=ExplorerRun,
+)
 async def explorer_submit(
     request: Request,
     owner: Writer,
@@ -73,12 +88,16 @@ async def explorer_submit(
     return await request.app.state.explorer.submit(owner, conversation_id, body, key)
 
 
-@router.post("/runs/{run_id}/cancel")
+@router.post("/runs/{run_id}/cancel", response_model=ExplorerCancellation)
 async def explorer_cancel(request: Request, owner: Writer, run_id: str):
     return await request.app.state.explorer.cancel(owner, run_id)
 
 
-@router.get("/runs/{run_id}/events")
+@router.get(
+    "/runs/{run_id}/events",
+    response_class=StreamingResponse,
+    responses={200: {"content": {"text/event-stream": {"schema": {"type": "string"}}}}},
+)
 async def explorer_events(request: Request, owner: User, run_id: str):
     service = request.app.state.explorer
     try:
@@ -111,7 +130,7 @@ async def explorer_events(request: Request, owner: User, run_id: str):
     )
 
 
-@router.post("/uploads", status_code=201)
+@router.post("/uploads", status_code=201, response_model=ExplorerUpload)
 async def explorer_upload(
     request: Request, owner: Writer, image: Annotated[UploadFile, File()]
 ):
@@ -123,7 +142,7 @@ async def explorer_upload(
         await image.close()
 
 
-@router.post("/internal/{run_id}/tool")
+@router.post("/internal/{run_id}/tool", include_in_schema=False)
 def explorer_tool(
     request: Request,
     run_id: str,

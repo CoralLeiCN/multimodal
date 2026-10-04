@@ -14,6 +14,7 @@ from sqlalchemy.dialects.postgresql import dialect
 from sqlalchemy.engine import make_url
 
 from app.services.catalogue import unavailable
+from app.services.deadline import check_deadline
 
 
 def connection(settings):
@@ -102,6 +103,7 @@ class NeonHttpQueries:
         self.client.close()
 
     def read(self, *statements):
+        check_deadline()
         payload = {"queries": [prepare(statement) for statement in statements]}
         try:
             response = self.client.post(self.endpoint, json=payload)

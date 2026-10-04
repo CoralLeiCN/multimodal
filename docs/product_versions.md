@@ -73,6 +73,11 @@ command for writes and coordinate both API deployments when publishing a new
 dataset/model generation. When updating a permanent collection, stop both APIs
 and restart them after publication.
 
+Each API verifies the published index through one background job shared by status,
+ordinary searches and Codex collection tools. A search timeout does not restart
+verification. Status exposes the catalogue count while checks run so users can
+browse; a failed check clears readiness until full verification succeeds.
+
 The local Compose `web` profile inherits the search app's catalogue, Qdrant,
 embedding configuration and read-only collection/model mounts. Only its app
 image, public port, authentication and private conversation state differ. This
@@ -275,6 +280,9 @@ adapter receives only an expiring token for that run. Collection tools verify
 ownership, arguments, tool count and catalogue generation. Final image IDs must
 come from evidence collected in the current turn; result cards use the server's
 metadata and attribution. Cross-generation evidence is rejected.
+Cards display the supplied credit and copyright notice, source links and linked
+licences. The companion consumes generated API functions and response types from
+the combined development schema; release entry points retain separate route sets.
 
 The pinned runtime is configured without shell execution, local image viewing,
 browsing, plugins, code execution or image generation. The runtime test inspects

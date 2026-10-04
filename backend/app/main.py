@@ -49,6 +49,7 @@ def create_app(
             application.state.search = SearchService(
                 engine, settings, store, embedder, catalogue=catalogue
             )
+            resources.callback(application.state.search.close)
             async with AsyncExitStack() as extensions:
                 if extension:
                     await extensions.enter_async_context(extension(application))

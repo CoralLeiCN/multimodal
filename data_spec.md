@@ -148,6 +148,9 @@ credit and notices into that output, link to the source record and the correct
 licence above, and identify modifications. Apply NC, SA, or ND according to that
 individual image's licence. The repository attribution accompanies this project;
 the same information must also accompany relevant downstream uses.
+Image details and web companion result cards display the supplied credit and
+copyright notice, link to the source record, and link recognized licence values
+to their licence terms. Unknown licence text remains as supplied.
 
 ## Verified coverage and remaining licence checks
 
