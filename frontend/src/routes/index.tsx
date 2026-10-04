@@ -1,5 +1,4 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query"
-import { Link } from "@tanstack/react-router"
 import {
   ArrowDown,
   ArrowRight,
@@ -11,7 +10,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react"
-import { type FormEvent, useEffect, useRef, useState } from "react"
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react"
 import cokeColaExample from "../../../examples/images/Coke Cola.jpg"
 import modalExample from "../../../examples/images/Modal.jpg"
 import techEuropeExample from "../../../examples/images/Tech Europe.jpg"
@@ -27,7 +26,6 @@ import {
   similarImages,
   status,
 } from "../client/api"
-import { ChatPanel } from "../components/chat-panel"
 import { ImageCard } from "../components/image-card"
 import { ImageDetail } from "../components/image-detail"
 import { Button } from "../components/ui/button"
@@ -56,7 +54,17 @@ type SearchIntent =
   | { type: "image"; file: File }
   | { type: "similar"; image: ImageRead }
 
-export function CollectionPage() {
+export function CollectionPage({
+  sidebar,
+  headerAction,
+  onChat,
+  onRecordChat,
+}: {
+  sidebar?: ReactNode
+  headerAction?: ReactNode
+  onChat?: (image: ImageRead) => void
+  onRecordChat?: (recordId: string) => void
+} = {}) {
   const [filters, setFilters] = useState<MetadataFilters>({})
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
@@ -282,17 +290,12 @@ export function CollectionPage() {
     health.isPending || ((health.data?.indexed_images ?? 0) > 0 && collection.isPending)
   const displayError = error || collection.error?.message || health.error?.message
 
-  const [chatSelection, setChatSelection] = useState<{ id: string; nonce: number }>()
-  const [chatRequest, setChatRequest] = useState<{ recordId: string }>()
-
   return (
     <div className="collection-workspace">
-      <ChatPanel selection={chatSelection} collectionRequest={chatRequest} />
+      {sidebar}
       <div className="app-shell">
         <header className="site-header">
-          <Link to="/create" className="header-link">
-            <Sparkles size={15} /> Image Studio
-          </Link>
+          {headerAction || <span />}
           <a className="brand" href="/" aria-label="Collection Explorer home">
             <span className="brand-mark">
               c<span>e</span>
@@ -326,7 +329,7 @@ export function CollectionPage() {
             </div>
             <div className="hero-heading">
               <h1 className="collection-title">Science Museum Group datasets.</h1>
-              <p>Multimodal search powered by the Gemini embedding model.</p>
+              <p>Explore the collection using text or images.</p>
             </div>
             <div className="search-panel">
               <div className="search-modes" role="tablist" aria-label="Search method">
@@ -449,8 +452,8 @@ export function CollectionPage() {
               )}
               {mode === "image" && (
                 <p className="upload-notice">
-                  Your image is sent to Google to generate an embedding. We use that embedding to
-                  find similar images in this collection. Your image is not added to the collection.
+                  Your image is processed by the search model on this server to find similar images
+                  in this collection. Your image is not added to the collection.
                 </p>
               )}
             </div>
@@ -641,7 +644,7 @@ export function CollectionPage() {
                     key={image.image_id}
                     image={image}
                     onOpen={setDetail}
-                    onChat={(image) => setChatSelection({ id: image.image_id, nonce: Date.now() })}
+                    onChat={onChat}
                     onSimilar={findSimilar}
                     canSearch={available}
                   />
@@ -720,7 +723,7 @@ export function CollectionPage() {
           image={detail}
           onClose={() => setDetail(null)}
           onSimilar={findSimilar}
-          onChat={(recordId) => setChatRequest({ recordId })}
+          onChat={onRecordChat}
           canSearch={available}
         />
       </div>

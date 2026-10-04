@@ -54,14 +54,13 @@ test("shows failed execution and allows a new turn", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Send message" })).toBeEnabled()
 })
 
-test("disabled agent never fabricates a reply", async ({ page }) => {
+test("disabled agent leaves a search-only interface", async ({ page }) => {
   await mockChat(page, { disabled: true, authenticated: false })
   await page.goto("/")
-  await page.getByRole("button", { name: "Open collection chat" }).click()
-  await expect(page.getByText("Image creation is not configured yet.")).toBeVisible()
-  await page.getByLabel("Message the collection companion").fill("Hello")
-  await expect(page.getByRole("button", { name: "Send message" })).toBeDisabled()
-  await expect(page.getByRole("log")).toBeEmpty()
+  await expect(page.getByRole("heading", { name: "Science Museum Group datasets." })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Open collection chat" })).toHaveCount(0)
+  await expect(page.getByRole("link", { name: "Image Studio" })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: /Use .* in chat/ })).toHaveCount(0)
 })
 
 

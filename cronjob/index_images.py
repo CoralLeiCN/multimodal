@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Index local images into Qdrant and save their configured R2 URLs in PostgreSQL."""
+"""Index mounted images into Qdrant and save their metadata in PostgreSQL."""
 
 import argparse
 import json
@@ -11,7 +11,7 @@ from app.core.config import ROOT, Settings
 from app.core.db import make_engine, migrate
 from app.core.locking import ingestion_lock
 from app.core.telemetry import configure_telemetry
-from app.services.embeddings import GeminiEmbeddings, SearchError
+from app.services.embeddings import SearchError, create_embeddings
 from app.services.ingestion import create_generation, run_ingestion, saved_generation_id
 from app.services.qdrant_store import VectorStore
 from app.services.selection import select_images
@@ -35,7 +35,7 @@ def main(argv=None):
     parser.add_argument(
         "--prepare-only",
         action="store_true",
-        help="Save catalogue rows without calling Gemini, Qdrant, or R2",
+        help="Save catalogue rows without running embeddings or contacting Qdrant",
     )
     parser.add_argument("--resume")
     parser.add_argument(
@@ -82,8 +82,9 @@ def main(argv=None):
         parser.error("batch-size must be 1–100")
     settings = Settings()
     configure_telemetry(settings, "multimodal-indexer", indexing=True)
-    embeddings = GeminiEmbeddings(settings)
+    embeddings = None
     vectors = None
+    engine = None
     generation_id = args.resume
     try:
         with ingestion_lock(settings, shared=not args.dry_run):
@@ -129,6 +130,7 @@ def main(argv=None):
                     flush=True,
                 )
                 return 0
+            embeddings = create_embeddings(settings)
             vectors = VectorStore(settings)
             result = run_ingestion(
                 engine,
@@ -153,9 +155,12 @@ def main(argv=None):
             print(f"Resume with --resume {generation_id}", file=sys.stderr)
         return 2
     finally:
-        embeddings.close()
+        if embeddings:
+            embeddings.close()
         if vectors:
             vectors.close()
+        if engine is not None:
+            engine.dispose()
         logfire.force_flush(timeout_millis=2000)
 
 

@@ -1,219 +1,160 @@
-# Multimodal
+---
+title: Collection Explorer
+emoji: 🔎
+colorFrom: blue
+colorTo: gray
+sdk: docker
+app_port: 7860
+---
 
-This project aims to build multimodal search for the Science Museum Group collection, enabling users to explore the collection using text and images.
+# Collection Explorer
 
-See [the user features](docs/user_features.md) for what we want to build.
+Search the Science Museum Group collection with text, uploaded images, or the
+“Find similar” action on a result. Browse indexed images, filter by creation year,
+place, and category, and view source identifiers, licences, and attribution.
 
-## Shared catalogue on Neon
+React and TypeScript provide the frontend; FastAPI serves the API and compiled
+frontend. SigLIP 2 Base runs on CPU to embed text and images. PostgreSQL stores the
+catalogue and ingestion state, and Qdrant stores vectors. Local SQLite caches
+embeddings between indexing runs. Search requires no model API key and has no
+daily quota.
 
-The shared catalogue uses Neon PostgreSQL; Qdrant keeps the vectors. Collaborators
-connect to the same Neon branch and Qdrant collection. Follow the
-[Neon setup guide](docs/neon_setup.md) before running the app. Images load from
-`IMAGE_ROOT` (default `data/images/`) first. Configure R2 to serve missing local
-images directly from the private bucket through signed URLs. The API reuses
-signatures for four minutes and enables five-minute browser caching of image
-bytes. Indexing reads
-local images and automatically saves their R2 URLs in Neon using the migrated
-path layout, without checking R2.
-Indexing still needs local
-source exports and images. See [R2 image delivery](backend/README.md#r2-catalogue-links)
-for configuration and catalogue linking.
-Reuse the shared index without running indexing again. `make setup` installs the project-local Neon CLI;
-run it with `bun run neon`, for example `bun run neon login`.
+The first release is a public Hugging Face Docker Space for dataset exploration.
+It includes only search features. A separate web edition adds
+Codex for agentic collection search, using the Python SDK over app server.
+`make run` builds search; `make web` builds the collection companion with HF
+account login. Both are implemented locally; live web credentials and hosted
+validation remain pending.
+The [version and harness decision](docs/product_versions.md) records the shared
+architecture, current gaps and implementation order.
+Both editions and Codex collection tools share one published Qdrant collection,
+its PostgreSQL catalogue and the matching HF image release. The
+[shared retrieval contract](docs/product_versions.md#shared-retrieval-contract)
+records the settings and validation rules; index the dataset once for both apps.
+The 100-image local preview has passed acceptance; hosted deployment is pending.
+The [deployment guide](docs/huggingface_spaces.md) tracks the remaining work and
+provides a reproducible preview with local PostgreSQL, Qdrant, and the app on
+port 7860.
+
+A later release will publish the collection datasets on Hugging Face. The
+[publication plan](data_spec.md#planned-hugging-face-dataset-publication) covers
+release contents, source identifiers, and attribution.
 
 ## Run locally
 
-Connect Neon using the [setup guide](docs/neon_setup.md). `DATABASE_URL` is
-required for the catalogue. Cached embeddings stay in the separate local
-`data/search/embedding_cache.sqlite3` file; `SEARCH_DATA_DIR` changes that folder.
-The repository contains no catalogue database snapshot. Indexing reuses the
-local embedding cache to avoid repeating embedding requests.
-
-Run these commands from the project root. Install Python 3.12+, uv, Bun, Make,
-and Docker with Compose first, and start Docker. Make commands also find the
-workspace's local Bun installation in `data/tools/node_modules/.bin` when present.
+Install Python 3.12+, uv, Bun, Make, and Docker with Compose. Run commands from
+the repository root:
 
 ```sh
 make setup
-# Edit .env and set GEMINI_API_KEY; setup preserves an existing .env.
-# For local Qdrant, set QDRANT_URL=http://127.0.0.1:6333 and QDRANT_API_KEY=
+```
+
+Setup installs locked dependencies and creates `.env` if absent. Configure
+`DATABASE_URL` for PostgreSQL and the Qdrant connection in `.env`. For a shared
+Neon catalogue, follow [Neon collaboration](backend/README.md#neon-collaboration).
+Settings load `.env`, then `.env.local`; process environment variables take
+precedence. An existing index must match the configured collection name, model,
+revision, dimensions, and preprocessing.
+Run `make migrate` before serving after a schema update; search startup performs
+no migrations. The HF edition can read Neon over HTTPS with
+`CATALOGUE_TRANSPORT=neon_http`. Local and web editions use `postgres` by default.
+
+For a new index, place the object JSON export under `data/bronze/` and extracted
+thumbnails under `data/images/`, or configure `IMAGE_ROOT` and pass a metadata
+path. Setup does not download collection data. See [data sources and paths](data_spec.md).
+For local Qdrant, set `QDRANT_URL=http://127.0.0.1:6333` and leave
+`QDRANT_API_KEY` empty, then run:
+
+```sh
 make qdrant-up
 make preview-index
-make index LIMIT=50
+make index LIMIT=50 WORKERS=1 BATCH_SIZE=8
 make run
 ```
 
-For Qdrant Cloud, fill in `QDRANT_URL` and `QDRANT_API_KEY` in `.env` with your
-cluster endpoint and key, and skip `make qdrant-up`. The example configuration
-uses Cloud placeholders and 1,536 embedding dimensions. If an existing `.env`
-uses 768 dimensions, change `EMBEDDING_DIMENSIONS` to `1536`, build a new index
-with `make index LIMIT=50`, and restart the app.
+For Qdrant Cloud, configure `QDRANT_URL=https://your-cluster-host:443` and
+`QDRANT_API_KEY`, and skip `make qdrant-up`. Reusing an existing ready index needs
+only `make run`. Open [localhost:8000](http://127.0.0.1:8000); API documentation is
+at [localhost:8000/docs](http://127.0.0.1:8000/docs). The command builds the frontend
+and serves it through FastAPI. Press Ctrl+C to stop, or use `PORT=8001` to choose
+another port.
 
-Selecting a new sample requires the object JSON export under `data/bronze/` and
-extracted thumbnails under `data/images/`; see [data sources and paths](data_spec.md).
-Setup installs dependencies and creates configuration; it does not download
-collection data. The preview selects up to 50 images from 1,000 records without
-embedding requests. `make index` sends selected images to Google's Gemini API
-and may incur API charges. Text and uploaded-image searches also use Gemini.
+The default model is `google/siglip2-base-patch16-224` with 768 dimensions and a
+pinned revision. Its first embedding operation downloads about 1.5 GB of weights
+to `data/models/`; later runs reuse them. Use `HF_HUB_OFFLINE=1` after preparing
+the cache. Short descriptions work best because the model accepts 64 text tokens.
+Model or preprocessing changes require a separate index and an API restart.
 
-After the first selection, plain `make index` reuses the saved catalogue and
-skips metadata scanning and sampling. Verified indexed images skip embedding and
-vector writes. Pending uncached images still need their local files. Set
-`LIMIT=50` to select a sample again. Reuse targets `QDRANT_COLLECTION_NAME`, or
-the only saved generation when no collection is configured. If several exist,
-use `INDEX_ARGS="--resume RUN_ID"` to choose one; an empty catalogue requires an
-explicit `LIMIT` first.
+`make preview-index` selects up to 50 images from 1,000 records without embedding.
+Plain `make index` resumes the saved selection and skips verified indexed images.
+Use `LIMIT` and `SCAN_LIMIT` to select a new sample, or
+`INDEX_ARGS="--resume RUN_ID"` to choose a saved run. For CPU inference, use
+`WORKERS=1 BATCH_SIZE=8`. Stop the API while updating a permanent collection and
+restart after publication. Full selection, recovery, and maintenance commands
+are in the [indexing guide](cronjob/README.md#sample-and-index-images).
 
-Open `http://127.0.0.1:8000` after `make run` starts. This command builds the
-frontend and serves it through the backend in the foreground; press Ctrl+C to
-stop it. API documentation is at `http://127.0.0.1:8000/docs`.
-If port 8000 is occupied, use `make run PORT=8001` and open
-`http://127.0.0.1:8001`.
-On later launches, use `make run` to reuse the existing cloud index. For local
-Qdrant, also run `make qdrant-up` first.
-Restart the app after publishing a replacement index.
+Collection images use a private Hugging Face Storage Bucket mounted read-only at
+`IMAGE_ROOT`. Local development uses `data/images/` or the preview's bind mount.
+Keep catalogue relative paths unchanged when uploading; indexing reads those
+same files. See [mounted image storage](backend/README.md#mounted-image-storage).
 
-Set `QDRANT_COLLECTION_NAME` in `.env` to reuse one collection across runs.
-The example uses `smg_images`; to retain an existing collection, use its exact
-name with its matching catalogue. Ingestion adds or updates selected
-images and retains earlier images. Stop the API during these updates and restart
-it after completion. See [permanent collection setup](cronjob/README.md#permanent-collection).
+## Development and checks
 
-For development, run `make backend` in one terminal and `make dev` in another,
-then open `http://127.0.0.1:5173`. Qdrant and an index are still needed for vector
-search. `make qdrant-down` stops the database and keeps its data.
+Run `make backend` and `make dev` in separate terminals, then open
+[localhost:5173](http://127.0.0.1:5173). `make qdrant-down` stops local Qdrant while
+preserving its data. The Makefile also finds Bun in
+`data/tools/node_modules/.bin` when installed there.
 
-Set `TEST_POSTGRES_URL` to a disposable PostgreSQL database’s direct URL for
-backend tests. Use `make help` to list targets grouped by task and `make check` for
-Python tests, lint checks, and the frontend build. Change the sample with
-`make preview-index LIMIT=20 SCAN_LIMIT=1000` and then the same options on
-`make index LIMIT=20 SCAN_LIMIT=1000`. Indexing defaults to 10 images per Gemini request and up to 10
-concurrent batch workers. Use `make index BATCH_SIZE=10 WORKERS=4` to choose
-both limits; `BATCH_SIZE` accepts 1–100 and `WORKERS` accepts 1–10. Large images
-split into smaller requests. `BATCH_SIZE=1` sends one image per request, and
-`WORKERS=1` runs one batch at a time. `LIMIT` controls the sample size independently.
-`LIMIT` and `SCAN_LIMIT` accept any positive integer. For a larger sample, use
-`make preview-index LIMIT=5000 SCAN_LIMIT=50000`, then
-`make index LIMIT=5000 SCAN_LIMIT=50000 BATCH_SIZE=10 WORKERS=10`.
-The scan limit defaults to 1,000 records, so increase it along with the image limit.
-Catalogue preparation uses SQL batches of up to 500 images, with progress output
-for saving rows and writing the selection snapshot. The complete selection commits
-before embedding starts; `BATCH_SIZE` controls Gemini requests independently.
-`INDEX_ARGS` passes extra selection options such as `--seed 7` or
-`--metadata path/to/export.json`; use the direct
-[indexing command](cronjob/README.md#sample-and-index-images) to resume a run.
+Set `TEST_POSTGRES_URL` to a disposable PostgreSQL database's direct URL, then run
+`make check` for Python tests, lint checks, and the frontend build. Run browser
+checks against the built application as described in the
+[frontend guide](frontend/README.md). `make help` lists available commands.
 
-## Brand Image Studio
+Use the [backend guide](backend/README.md) for API contracts and tracing, and the
+[search specification](docs/multimodal_search_spec.md) for indexing and retrieval
+rules. Exact collection IDs such as `co25823` use the parameterized PostgreSQL
+[collection ID lookup](docs/collection_id_lookup.md).
 
-Open `/create` to save a brand name, description, colors palette, personality,
-typography, and illustration style. Generate and edit images through the collection
-chat sidebar. Designer-editable prompts live in
-[`image_agent.yaml`](backend/app/prompts/image_agent.yaml). The agent runs in Modal Sandboxes, uses Gemini / Nano Banana,
-and sends execution traces to Pydantic Logfire. This module works independently of
-the collection index. Creation is disabled until configured.
+## Collection companion and Image Studio
 
-See [Image Studio setup](docs/image_agent_setup.md) for local profile preparation,
-cloud credentials, deployment, and validation. `make agent-api` serves the studio
-without starting search services; `make agent-deploy` builds and deploys configured
-Modal services. Cloud generation requires PostgreSQL, private object storage, and
-provider credentials. The [design](docs/image_agent_design.md) has a
-[Chinese companion](docs/image_agent_design.CN.md).
+`make studio` runs the optional brand image-generation prototype separately.
+With `AGENT_ENABLED=true`, its sidebar supports brand conversations,
+image generation, and follow-up edits. `/create` manages six brand design fields.
+The OpenAI client handles chat through a configured compatible endpoint; local
+task processes execute image tasks, and a separate private HF bucket
+keeps generated assets separate from the collection index.
 
-## Collection Explorer
+[Image Studio setup](docs/image_agent_setup.md) covers credentials, cloud services,
+and validation. [The chat backend guide](docs/chat_agent_backend.md) documents
+conversation APIs and recovery, with a [Chinese version](docs/chat_agent_backend.CN.md).
+Designers can edit [brand prompts](docs/brand_prompts.md). `make agent-api` starts
+the standalone agent API; `make agent-worker` processes its queue. The web companion uses the separate
+`web` dependency extra and `EXPLORER_` settings described in the
+[web setup](docs/product_versions.md#run-the-web-edition).
 
-The prototype has a React frontend and dedicated FastAPI search endpoints.
-The SQL catalogue tracks image ingestion; Qdrant stores the multimodal vectors. Start with
-a sample of 50 local images using the
-[backend setup guide](backend/README.md), then build or run the
-[frontend](frontend/README.md). The application is served at
-`http://127.0.0.1:8000`, with API documentation at `/docs`.
-Image search supports uploads and three selectable presets from `examples/images`.
-Choose a thumbnail, then select Explore to search with that image.
-Creation year, creation place, and category filters apply to browsing, text,
-image, and similar-image searches. Qdrant indexes these metadata fields and
-The SQL catalogue retains their source labels and date ranges.
-The left-edge Chat tab toggles a companion sidebar alongside the collection,
-so users can browse images while chatting. The sidebar connects to brand-bound
-conversations, tracks generation tasks, and displays downloadable results. See
-the [frontend guide](frontend/README.md) for sign-in and configuration.
-Image details include buttons beside each collection ID to copy it or open chat
-with the ID filled in and ready to edit or send.
-Date preprocessing follows the [data processing rules](data_processing_spec.md),
-including treating `c.1993` as 1993 for filtering while preserving its display text.
+## Collection data
 
-For an exact collection ID such as `co25823`, follow the
-[collection ID lookup guide](docs/collection_id_lookup.md). It includes a runnable
-command for agents and returns all matching images in the active catalogue.
-
-Pydantic Logfire traces API requests, Gemini embedding calls, indexing, and
-database operations. Cloud export uses separate local project credentials for
-the API and indexing, or `LOGFIRE_TOKEN` and `LOGFIRE_INDEXER_TOKEN` in `.env`.
-See [tracing setup](backend/README.md#logfire-tracing).
-
-The indexing command reads a bounded portion of the bronze metadata and sends
-only selected image bytes to Gemini. It saves checkpoints so completed embeddings
-can be reused. See [the indexing commands](cronjob/README.md#sample-and-index-images)
-and [the service specification](docs/multimodal_search_spec.md).
-
-## Data sources
-
-This project uses data from the Science Museum Group:
-
-- [Science Museum Group Datasets](https://coimages.sciencemuseumgroup.org.uk/datasets/index.html)
-- [Science Museum Group Collection](https://collection.sciencemuseumgroup.org.uk/)
-
-We downloaded the object and document exports named `with_CC_images` and the
-supplied medium-thumbnail image archive. **CC means Creative Commons**: reuse
-depends on each image's specific licence, including attribution and any
-NonCommercial, ShareAlike, or NoDerivatives conditions.
-
-See [the data and licensing notes](data_spec.md) for the licence meanings,
-requirements, handling verified in this project, and outstanding licence checks.
-
-Attribution: © The Board of Trustees of the Science Museum.
-Source: [Science Museum Group Collection](https://collection.sciencemuseumgroup.org.uk/).
-
-## Data layers
+Sources: [SMG datasets](https://coimages.sciencemuseumgroup.org.uk/datasets/index.html)
+and [SMG Collection](https://collection.sciencemuseumgroup.org.uk/).
+The project uses the object and document exports named `with_CC_images` and the
+medium-thumbnail archive. Reuse depends on each image's specific Creative Commons
+licence, including attribution and any NonCommercial, ShareAlike, or NoDerivatives
+conditions. Consult [data and licensing notes](data_spec.md) before reuse.
 
 | Layer | Location | Contents |
 | --- | --- | --- |
-| Bronze | `data/bronze/` | Original object and document JSON exports for reference. |
+| Bronze | `data/bronze/` | Original object and document JSON exports. |
 | Silver | `data/silver/` | Official SMG processed object CSV. |
-| Gold | `data/gold/` | Silver records whose referenced images are available locally, stored as Parquet. |
+| Gold | `data/gold/` | Silver rows with available local images, stored as Parquet. |
+| Images | `data/images/` | Extracted thumbnails with their original relative paths. |
 
-Generate the gold file with:
+Generate `data/gold/object_records.parquet` with
+`uv run cronjob/silver_to_gold.py`. The converter preserves columns, text values,
+and empty fields for rows whose image paths match local files. Run
+`python3 cronjob/match_images.py` for an optional manifest and coverage audit under
+`data/processed/`. The [pipeline guide](cronjob/README.md) documents options and
+output fields; [data processing rules](data_processing_spec.md) define date handling.
+Generated data is ignored by Git.
 
-```sh
-uv sync --locked
-uv run cronjob/silver_to_gold.py
-```
-
-The converter uses pandas for CSV and Parquet operations, with PyArrow as the
-Parquet engine. It keeps rows whose `image` path matches a local file under
-`data/images/` and reports how many rows were removed. All columns and their text
-values are retained for those rows, including empty cells, identifiers, and
-historical date ranges. The output is written to `data/gold/object_records.parquet`.
-
-See [the pipeline documentation](cronjob/README.md) for options.
-
-## Optional image metadata audit
-
-Run `python3 cronjob/match_images.py` when an image/metadata manifest or coverage
-audit is needed. It creates `data/processed/` from the bronze exports and local
-images. These generated outputs can be removed after review and rebuilt on demand.
-The extracted thumbnails live in `data/images/`.
-See [the matching script documentation](cronjob/README.md)
-for output fields and options.
-
-
-The conversation backend supports brand-bound chats, collection image IDs, and
-follow-up edits in Modal sandboxes. See [Brand chat agent backend](docs/chat_agent_backend.md)
-for endpoints, configuration, recovery, and verification. The collection chat sidebar connects to these endpoints and supports saved
-conversations, task cancellation, image downloads, and follow-up edits.
-
-
-Gemini Flash handles chat and compiles image tasks in the trusted backend. Modal
-sandboxes execute source lookup, Nano Banana generation, evaluation, and result return.
-Current user instructions override conflicting brand defaults for that task; the
-saved brand remains unchanged. Pure chat does not create a sandbox. Collection image
-IDs can resolve through the local catalogue or a configured trusted online API.
+Attribution: © The Board of Trustees of the Science Museum.
+Source: [Science Museum Group Collection](https://collection.sciencemuseumgroup.org.uk/).

@@ -12,7 +12,7 @@ export function ImageCard({
   image: ImageRead
   onOpen: (image: ImageRead) => void
   onSimilar: (image: ImageRead) => void
-  onChat: (image: ImageRead) => void
+  onChat?: (image: ImageRead) => void
   canSearch: boolean
 }) {
   const [failed, setFailed] = useState(false)
@@ -48,14 +48,16 @@ export function ImageCard({
           <h3>{image.title}</h3>
         </div>
       </button>
-      <button
-        type="button"
-        className="image-chat-link"
-        onClick={() => onChat(image)}
-        aria-label={`Use ${image.title} in chat`}
-      >
-        Use in chat
-      </button>
+      {onChat && (
+        <button
+          type="button"
+          className="image-chat-link"
+          onClick={() => onChat(image)}
+          aria-label={`Use ${image.title} in chat`}
+        >
+          Use in chat
+        </button>
+      )}
       <div className="card-bottom">
         <span title={association?.licence}>
           {association?.licence || "Rights information unavailable"}

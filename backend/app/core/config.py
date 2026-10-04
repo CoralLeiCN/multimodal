@@ -5,6 +5,8 @@ from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[3]
+SIGLIP_MODEL = "google/siglip2-base-patch16-224"
+SIGLIP_REVISION = "75de2d55ec2d0b4efc50b3e9ad70dba96a7b2fa2"
 
 
 class Settings(BaseSettings):
@@ -12,13 +14,16 @@ class Settings(BaseSettings):
         env_file=(ROOT / ".env", ROOT / ".env.local"), extra="ignore"
     )
 
-    gemini_api_key: SecretStr | None = None
     logfire_token: SecretStr | None = None
     logfire_indexer_token: SecretStr | None = None
     logfire_send_to_logfire: bool | Literal["if-token-present"] = "if-token-present"
     logfire_environment: str = "development"
-    embedding_model: str = "gemini-embedding-2"
-    embedding_dimensions: int = 1536
+    embedding_model: str = SIGLIP_MODEL
+    embedding_revision: str = Field(default=SIGLIP_REVISION, pattern=r"^[a-f0-9]{40}$")
+    embedding_dimensions: int = Field(default=768, gt=0)
+    embedding_cpu_threads: int = Field(default=2, ge=1, le=16)
+    embedding_batch_size: int = Field(default=8, ge=1, le=32)
+    embedding_model_cache: Path = ROOT / "data/models"
     qdrant_url: str = "http://127.0.0.1:6333"
     qdrant_collection_prefix: str = Field(
         default="smg_images", pattern=r"^[A-Za-z0-9_-]{1,80}$"
@@ -28,16 +33,12 @@ class Settings(BaseSettings):
     )
     qdrant_api_key: SecretStr | None = None
     search_data_dir: Path = ROOT / "data/search"
+    catalogue_transport: Literal["postgres", "neon_http"] = "postgres"
     catalogue_database_url: SecretStr | None = Field(default=None, alias="DATABASE_URL")
     direct_database_url: SecretStr | None = Field(
         default=None, alias="DATABASE_URL_UNPOOLED"
     )
     image_root: Path = ROOT / "data/images"
-    r2_endpoint_url: str | None = None
-    r2_bucket: str | None = None
-    r2_access_key_id: SecretStr | None = None
-    r2_secret_access_key: SecretStr | None = None
-    r2_prefix: str = ""
     max_image_bytes: int = 10 * 1024 * 1024
     max_image_pixels: int = 20_000_000
 
@@ -78,7 +79,10 @@ class Settings(BaseSettings):
     def config_hash(self) -> str:
         import hashlib
 
-        value = f"{self.embedding_model}:{self.embedding_dimensions}:original-image-v1"
+        value = (
+            f"{self.embedding_model}:{self.embedding_revision}:"
+            f"{self.embedding_dimensions}:siglip-rgb224-text64-v1"
+        )
         return hashlib.sha256(value.encode()).hexdigest()
 
 

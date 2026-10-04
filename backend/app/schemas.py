@@ -1,5 +1,5 @@
 import unicodedata
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -115,6 +115,7 @@ class SearchResponse(BaseModel):
 
 
 class StatusResponse(BaseModel):
+    embedding_provider: Literal["local"] | None = None
     status: str
     index_version: str | None = None
     indexed_images: int = 0

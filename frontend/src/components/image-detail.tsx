@@ -24,7 +24,7 @@ export function ImageDetail({
   image: ImageRead | null
   onClose: () => void
   onSimilar: (image: ImageRead) => void
-  onChat: (recordId: string) => void
+  onChat?: (recordId: string) => void
   canSearch: boolean
 }) {
   const pendingChat = useRef<string | null>(null)
@@ -55,7 +55,7 @@ export function ImageDetail({
             setCopyStatus("")
             if (pendingChat.current) {
               event.preventDefault()
-              onChat(pendingChat.current)
+              onChat?.(pendingChat.current)
               pendingChat.current = null
             }
           }}
@@ -93,18 +93,20 @@ export function ImageDetail({
                               >
                                 <Copy size={15} aria-hidden="true" />
                               </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                aria-label={`Chat about collection ID ${item.record_uid}`}
-                                title="Use collection ID in chat"
-                                onClick={() => {
-                                  pendingChat.current = item.record_uid
-                                  onClose()
-                                }}
-                              >
-                                <MessageCircle size={15} aria-hidden="true" />
-                              </Button>
+                              {onChat && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  aria-label={`Chat about collection ID ${item.record_uid}`}
+                                  title="Use collection ID in chat"
+                                  onClick={() => {
+                                    pendingChat.current = item.record_uid
+                                    onClose()
+                                  }}
+                                >
+                                  <MessageCircle size={15} aria-hidden="true" />
+                                </Button>
+                              )}
                             </span>
                           )}
                         </dd>

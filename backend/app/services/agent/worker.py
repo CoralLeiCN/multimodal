@@ -1,8 +1,9 @@
 """Durable task worker: run separately from the HTTP server."""
 
-import argparse
 import logging
 import secrets
+import signal
+import threading
 import time
 
 import logfire
@@ -11,11 +12,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agent_models import Asset, Run, Workspace, uid
-from app.core.telemetry import configure, flush_relay
 from app.services.agent.config import AgentSettings
 from app.services.agent.db import engine_for, migrate, transaction
-from app.services.agent.modal_sandbox import ModalSandboxManager, image_version
+from app.services.agent.process_executor import ProcessExecutor, runtime_version
 from app.services.agent.service import ACTIVE, AgentService, emit
+from app.services.agent.telemetry import configure, flush_relay
 
 
 class Worker:
@@ -48,7 +49,7 @@ class Worker:
                     if sandbox_id:
                         run.sandbox_id = sandbox_id
                     if run.status in ACTIVE:
-                        if run.deadline and time.time() >= run.deadline:
+                        if code == 124 or (run.deadline and time.time() >= run.deadline):
                             run.status, run.stage, run.error_code = (
                                 "timed_out",
                                 "timed_out",
@@ -64,7 +65,7 @@ class Worker:
                             run.status, run.stage, run.error_code = (
                                 "failed",
                                 "failed",
-                                "sandbox_exit",
+                                "execution_exit",
                             )
                             run.result = {
                                 "asset_ids": run.checkpoint.get("generated", []),
@@ -74,12 +75,14 @@ class Worker:
                                 session,
                                 run,
                                 "failed",
-                                "The sandbox stopped before publishing a result.",
+                                "The task process stopped before publishing a result.",
                             )
                         elif run.status == "starting" and sandbox_id:
                             run.status, run.stage = "running", "planning"
                             run.lease_until = time.time() + 90
-                            emit(session, run, "running", "The cloud agent is running.")
+                            emit(
+                                session, run, "running", "The task process is running."
+                            )
                         elif (
                             run.status == "starting"
                             and time.time() > run.created_at
@@ -88,13 +91,13 @@ class Worker:
                             run.status, run.stage, run.error_code = (
                                 "failed",
                                 "failed",
-                                "sandbox_start_unknown",
+                                "execution_start_unknown",
                             )
                             emit(
                                 session,
                                 run,
                                 "failed",
-                                "Sandbox startup could not be confirmed. No automatic replacement was started.",
+                                "Task startup could not be confirmed. No automatic replacement was started.",
                             )
                         elif run.status == "running" and time.time() > run.lease_until:
                             run.status, run.stage, run.error_code = (
@@ -106,7 +109,7 @@ class Worker:
                                 session,
                                 run,
                                 "failed",
-                                "The sandbox stopped reporting progress.",
+                                "The task process stopped reporting progress.",
                             )
                     if run.status in {"failed", "timed_out"}:
                         run.result = {
@@ -124,13 +127,13 @@ class Worker:
                             run = service.run(session, snapshot.id, True)
                             if run.attempt_id == snapshot.attempt_id:
                                 run.sandbox_name = None
-            except Exception:  # noqa: BLE001 -- reconcile uncertain cloud state on the next sweep
+            except Exception:  # noqa: BLE001 -- reconcile uncertain process state on the next sweep
                 logging.getLogger(__name__).warning(
-                    "Sandbox reconciliation unavailable for run %s", snapshot.id
+                    "Task reconciliation unavailable for run %s", snapshot.id
                 )
 
     def tick(self):
-        with logfire.span("sandbox.dispatch"):
+        with logfire.span("execution.dispatch"):
             self._tick()
 
     def _tick(self):
@@ -168,7 +171,7 @@ class Worker:
                     run.sandbox_id = None
                     run.attempt_id = uid()
                     run.sandbox_name = f"image-{run.id}-{run.attempt_id[:8]}"
-                    run.image_version = image_version()
+                    run.image_version = runtime_version()
                     run.status, run.stage = "starting", "starting"
                     run.deadline = (
                         time.time()
@@ -183,7 +186,12 @@ class Worker:
                         or f"00-{secrets.token_hex(16)}-{secrets.token_hex(8)}-01"
                     )
                     run.trace_id = run.traceparent.split("-")[1]
-                    emit(session, run, "starting", "Starting an isolated cloud agent.")
+                    emit(
+                        session,
+                        run,
+                        "starting",
+                        "Starting a task process in the Space.",
+                    )
                     claimed = run
         if claimed:
             try:
@@ -197,13 +205,13 @@ class Worker:
                             run.deadline, time.time() + service.settings.run_timeout
                         )
                         run.lease_until = time.time() + 90
-                        emit(session, run, "running", "The cloud agent is running.")
-                # Cancellation during create must still reclaim the newly created sandbox.
+                        emit(session, run, "running", "The task process is running.")
+                # Cancellation during create must still reclaim the newly created task process.
                 if run.status != "running":
                     self.manager.terminate(sandbox_id)
             except Exception:  # noqa: BLE001 -- an uncertain create must not spawn a duplicate
                 logging.getLogger(__name__).warning(
-                    "Sandbox creation uncertain for run %s", claimed.id
+                    "Task creation uncertain for run %s", claimed.id
                 )
         flush_relay(service)
         try:
@@ -223,25 +231,27 @@ class Worker:
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--once", action="store_true")
-    args = parser.parse_args()
     settings = AgentSettings()
     settings.validate_enabled()
-    if not settings.gemini_api_key:
-        raise SystemExit("Configure Gemini before starting the chat worker.")
+    if settings.blockers():
+        raise SystemExit("Configure the harness and image provider before starting the chat worker.")
     configure(settings)
     engine = engine_for(settings)
     migrate(engine, settings.workspace)
-    worker = Worker(AgentService(settings, engine), ModalSandboxManager(settings))
+    manager = ProcessExecutor(settings)
+    worker = Worker(AgentService(settings, engine), manager)
+    stopping = threading.Event()
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(signum, lambda *_: stopping.set())
     try:
-        while True:
+        while not stopping.is_set():
             worker.tick()
-            if args.once:
-                break
-            time.sleep(5)
+            stopping.wait(5)
     finally:
-        engine.dispose()
+        try:
+            manager.close()
+        finally:
+            engine.dispose()
 
 
 if __name__ == "__main__":

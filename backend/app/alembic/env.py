@@ -22,7 +22,7 @@ try:
     if engine.dialect.name != "postgresql":
         raise ValueError("Catalogue migrations require PostgreSQL.")
     with engine.begin() as connection:
-        # Serialize startup migrations from collaborating app processes.
+        # Serialize explicit migrations and indexing from collaborating operators.
         connection.exec_driver_sql("SELECT pg_advisory_xact_lock(734682109)")
         run_migrations(connection)
 finally:

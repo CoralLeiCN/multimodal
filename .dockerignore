@@ -1,0 +1,45 @@
+# Keep the build context limited to the files used by the Dockerfile.
+**
+!Dockerfile
+!.dockerignore
+!pyproject.toml
+!uv.lock
+!package.json
+!bun.lock
+!backend/
+!backend/pyproject.toml
+!backend/alembic.ini
+!backend/app/
+!backend/app/**
+!cronjob/
+!cronjob/match_images.py
+!frontend/
+!frontend/package.json
+!frontend/tsconfig.json
+!frontend/vite.config.ts
+!frontend/index.html
+!frontend/src/
+!frontend/src/**
+!frontend/public/
+!frontend/public/**
+!examples/
+!examples/images/
+!examples/images/**
+# Exclude local credentials and generated files even inside allowed directories.
+**/.env
+**/.env.*
+**/.logfire/**
+**/__pycache__/**
+**/*.pyc
+**/.DS_Store
+
+!scripts/
+!scripts/package_backend.py
+
+# Directory allow rules above must never bring generated or installed content back.
+**/node_modules/**
+frontend/dist/**
+frontend/test-results/**
+frontend/playwright-report/**
+frontend/tests/**
+backend/tests/**

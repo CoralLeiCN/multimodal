@@ -3,7 +3,7 @@
 import hashlib
 import json
 
-from sqlalchemy import func, inspect, literal, select
+from sqlalchemy import func, select
 
 from app.models import Association, Generation, Image, Ingestion, ServiceState
 
@@ -14,16 +14,7 @@ TABLES = tuple(
 
 
 def catalogue_rows(connection, table):
-    columns = list(table.columns)
-    if table.name == "images" and "r2_url" not in {
-        column["name"] for column in inspect(connection).get_columns("images")
-    }:
-        # Historical schema-0003 SQLite catalogues predate R2 references.
-        columns = [
-            literal(None).label("r2_url") if column.name == "r2_url" else column
-            for column in columns
-        ]
-    return connection.execute(select(*columns).order_by(*table.primary_key)).mappings()
+    return connection.execute(select(table).order_by(*table.primary_key)).mappings()
 
 
 def fingerprint(connection, table):

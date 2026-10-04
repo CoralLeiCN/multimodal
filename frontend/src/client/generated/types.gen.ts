@@ -418,6 +418,10 @@ export type SimilarQuery = {
  */
 export type StatusResponse = {
     /**
+     * Embedding Provider
+     */
+    embedding_provider?: 'local' | null;
+    /**
      * Status
      */
     status: string;

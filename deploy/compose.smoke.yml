@@ -1,0 +1,59 @@
+# Disposable services for validating the application image without cloud credentials.
+name: multimodal-space-smoke
+services:
+  postgres:
+    image: postgres:18-bookworm
+    environment:
+      POSTGRES_USER: smoke
+      POSTGRES_PASSWORD: smoke
+      POSTGRES_DB: smoke
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smoke -d smoke"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  qdrant:
+    image: qdrant/qdrant:v1.19.1
+    tmpfs:
+      - /qdrant/storage
+      - /qdrant/snapshots
+  migrate:
+    image: multimodal-space:local
+    platform: linux/amd64
+    command: ["alembic", "-c", "backend/alembic.ini", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql://smoke:smoke@postgres:5432/smoke
+    depends_on:
+      postgres:
+        condition: service_healthy
+  app:
+    image: multimodal-space:local
+    platform: linux/amd64
+    environment:
+      DATABASE_URL: postgresql://smoke:smoke@postgres:5432/smoke
+      QDRANT_URL: http://qdrant:6333
+      LOGFIRE_SEND_TO_LOGFIRE: "false"
+      AGENT_ENABLED: "false"
+    ports:
+      - "127.0.0.1:7860:7860"
+    networks:
+      - default
+      - browser
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/api/v1/status', timeout=5).close()"]
+      interval: 5s
+      timeout: 6s
+      retries: 30
+networks:
+  default:
+    internal: true
+  browser: {}

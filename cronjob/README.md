@@ -56,12 +56,12 @@ make index LIMIT=5000 SCAN_LIMIT=50000 BATCH_SIZE=10 WORKERS=10
 
 The actual image count depends on eligible local files in the scanned records.
 `--prepare-only` saves the selection snapshot and catalogue tracking
-rows without contacting Gemini, Qdrant, or R2.
+rows without loading the embedding model or contacting Qdrant.
 
 After printing the selection summary, preparation saves images, source associations,
 and ingestion tracking rows with multi-row SQL statements in batches of up to 500
 images. Association inserts are also capped at 500 rows per statement. This batch
-size is independent of `--batch-size`, which controls Gemini requests. Progress
+size is independent of `--batch-size`, which controls embedding batches. Progress
 reports each prepared batch as uncommitted, then confirms the catalogue commit.
 All batches share one transaction: a failure rolls back the whole selection update,
 including updates to an existing permanent collection.
@@ -73,16 +73,20 @@ commit leaves the catalogue saved; rerun without selection options (or with
 `--resume RUN_ID`) to continue. Embedding starts after preparation and the snapshot
 finish. Existing running commands retain the code they loaded at startup.
 
-Indexing defaults to 10 images per Gemini request and up to 10 concurrent batch
-workers. Set `--batch-size` from 1 to 100 and `--workers` from 1 to 10, or use:
+Indexing defaults to batches of 10 catalogue images and up to 10 batch workers.
+For SigLIP 2 CPU indexing, use `WORKERS=1`: inference is serialized and each
+forward pass handles at most `EMBEDDING_BATCH_SIZE` images (eight by default).
+The first embedding operation downloads the pinned weights into
+`EMBEDDING_MODEL_CACHE` (default `data/models/`); later runs reuse that cache.
+Set `--batch-size` from 1 to 100 and `--workers` from 1 to 10, or use:
 
 ```sh
-make index BATCH_SIZE=10 WORKERS=10
+make index BATCH_SIZE=8 WORKERS=1
 ```
 
-Each image is wrapped in its own Gemini `Content` object and receives a separate
-vector. A worker processes up to `batch-size` catalogue images at a time; only
-uncached, distinct content is sent to Gemini. Requests contain at most 12 MiB of
+Each image receives a separate vector. A worker processes up to `batch-size`
+catalogue images at a time; only uncached, distinct content is passed to the
+embedding adapter. Requests contain at most 12 MiB of
 raw image bytes and split further when needed. A single image must also fit that
 budget and `MAX_IMAGE_BYTES` (10 MiB by default). Partial batches are sent at the
 end of the selection. The default allows up to 100 catalogue images in progress,
@@ -110,8 +114,9 @@ Each run prints its ID. Resume an interrupted or prepared run with:
 uv run --package multimodal-backend cronjob/index_images.py --resume RUN_ID --workers 10 --batch-size 10
 ```
 
-The ignored root `.env` supplies `GEMINI_API_KEY`. Indexing uploads the selected
-thumbnails to Google and stores each successful embedding in the separate local
+The ignored root `.env` supplies database and model settings. SigLIP 2 processes
+selected thumbnails locally without an API key. Each successful embedding
+is stored in the separate local
 `embedding_cache.sqlite3` database before
 upserting it to Qdrant. Stable point IDs make retries safe. An image becomes
 `indexed` only after its Qdrant point is confirmed. A complete generation becomes
@@ -120,7 +125,7 @@ Permanent collection updates remain unavailable until successfully resumed.
 
 Outputs live under `data/search/`: `embedding_cache.sqlite3`, `selections/*.jsonl`,
 `runs/*.json`, and persistent Qdrant storage. Each JSONL selection row includes
-the local image path, nullable `r2_url`, checksum, source associations, licence, copyright, credit,
+the relative image path, checksum, source associations, licence, copyright, credit,
 and `filter_metadata`. Associations include original `date` text, `places`,
 `categories`, and derived `date_ranges`. Qdrant receives normalized filter rows
 and four payload indexes for place/category keywords and start/end years.
@@ -207,7 +212,7 @@ and [filter semantics](../docs/multimodal_search_spec.md#metadata-filters).
 ## Share the catalogue
 
 Collaborators connect to the same Neon project and Qdrant collection using the
-[setup guide](../docs/neon_setup.md). SQLite remains the local embedding cache.
+[setup guide](../backend/README.md#neon-collaboration). SQLite remains the local embedding cache.
 Back up the catalogue through Neon or PostgreSQL tools and Qdrant separately.
 The repository contains no catalogue database snapshot. Preserve the local
 embedding cache to reuse completed embeddings during indexing.
@@ -374,24 +379,17 @@ the standalone script against Python 3.12 compatibility.
 ## Shared indexing on Neon
 
 Set `DATABASE_URL` and `DATABASE_URL_UNPOOLED` through the
-[Neon setup](../docs/neon_setup.md). These commands use the shared catalogue and
+[Neon setup](../backend/README.md#neon-collaboration). These commands use the shared catalogue and
 Qdrant collection. Indexing and metadata refresh acquire the same database lock
 across collaborators; a second writer exits with an error. Dry runs stay local.
 Keep source exports and image files available on the indexing machine.
 
-With `R2_ENDPOINT_URL` configured, indexing reads local images for embeddings
-and automatically writes `images.r2_url` to Neon using
-`R2_ENDPOINT_URL/R2_BUCKET/[R2_PREFIX/]relative_path` with URL-encoded object keys.
-It trusts the completed R2 migration and makes no R2 requests. New, updated, and
-resumed generations receive these links, including `--prepare-only` snapshots;
-no separate linking command is needed.
-
-Set `IMAGE_ROOT` to the parent `data/images/` directory, keeping
-`smg_all_medium_thumnail_images_09_04_2025/` in the relative path. Keep
-`R2_PREFIX=` empty for the current upload; there is no extra `images/` in R2.
-Without an R2 endpoint, indexing keeps the local-only behavior. The
-[R2 catalogue linking command](../backend/README.md#r2-catalogue-links) remains
-available as an optional remote audit/backfill.
+Indexing reads images beneath `IMAGE_ROOT`, which can be a read-only HF bucket
+mount or the local extracted files. It records relative paths and checksums in
+PostgreSQL and selection snapshots. Preserve paths when copying images into the
+bucket. For the source archive, the relative path includes
+`smg_all_medium_thumnail_images_09_04_2025/` beneath the root. Identical bytes and
+paths retain their image IDs and cached vectors after moving to a new mount.
 
 `SEARCH_DATA_DIR` defaults to `data/search/` and holds the SQLite embedding cache,
 selection snapshots, and reports. `DATABASE_URL` is required for catalogue writes.

@@ -7,8 +7,9 @@ import pytest
 from app.core import telemetry
 from app.core.config import Settings
 from app.main import create_app
-from app.services.embeddings import GeminiEmbeddings, SearchError
+from app.services.embeddings import SearchError
 from app.services.ingestion import run_ingestion
+from app.services.siglip_embeddings import SiglipEmbeddings
 from fastapi.testclient import TestClient
 from logfire.testing import TestExporter as SpanExporter
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -69,19 +70,20 @@ def test_search_spans_are_nested_and_exclude_request_content(setup, spans):
 
 def test_embedding_span_records_metadata_without_input_or_vector(spans):
     secret = "private-embedding-input-73245"
-    settings = Settings(_env_file=None, gemini_api_key=secret, embedding_dimensions=3)
-    adapter = GeminiEmbeddings(settings)
-    adapter.client = SimpleNamespace(
-        models=SimpleNamespace(
-            embed_content=lambda **kwargs: SimpleNamespace(
-                embeddings=[SimpleNamespace(values=[123.4567, 0.0, 0.0])]
+    settings = Settings(_env_file=None)
+    adapter = SiglipEmbeddings(settings)
+    adapter._processor = lambda **kwargs: {}
+    adapter._model = SimpleNamespace(
+        get_text_features=lambda **kwargs: SimpleNamespace(
+            pooler_output=SimpleNamespace(
+                float=lambda: SimpleNamespace(tolist=lambda: [[123.4567] + [0.0] * 767])
             )
         )
     )
-    assert adapter.embed(text=secret) == [1.0, 0.0, 0.0]
-    span = next(s for s in spans.exported_spans if s.name == "gemini.embed")
+    assert adapter.embed(text=secret) == [1.0] + [0.0] * 767
+    span = next(s for s in spans.exported_spans if s.name == "siglip.embed")
     assert span.attributes["model"] == settings.embedding_model
-    assert span.attributes["dimensions"] == 3
+    assert span.attributes["dimensions"] == 768
     assert span.attributes["input_kind"] == "text"
     output = json.dumps(spans.exported_spans_as_dict())
     assert secret not in output

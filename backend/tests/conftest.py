@@ -76,7 +76,6 @@ def database_factory(postgres_admin, tmp_path):
             DATABASE_URL_UNPOOLED=url,
             search_data_dir=tmp_path / schema,
             embedding_dimensions=3,
-            gemini_api_key="fake-for-tests",
         )
         engine = make_engine(settings)
         databases.append((schema, engine))

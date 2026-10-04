@@ -2,7 +2,6 @@ import logging
 import time
 
 import logfire
-from google.genai.errors import APIError
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -53,7 +52,7 @@ class Gateway:
                 if tool.operation not in {"generate", "evaluate"}:
                     raise AgentError(
                         "invalid_operation",
-                        "The sandbox accepts execution tools only.",
+                        "The task process accepts execution tools only.",
                         403,
                     )
                 brand = run.request["execution"]["brand"]
@@ -190,7 +189,9 @@ class Gateway:
             code = error.code if isinstance(error, AgentError) else "outcome_unknown"
             if isinstance(error, ValidationError):
                 code = "invalid_model_output"
-            http_status = error.code if isinstance(error, APIError) else None
+            http_status = getattr(error, "status_code", getattr(error, "code", None))
+            if not isinstance(http_status, int):
+                http_status = None
             if http_status is not None:
                 code = {
                     400: "provider_invalid_request",

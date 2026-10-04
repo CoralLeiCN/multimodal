@@ -1,0 +1,80 @@
+# Local preview only. These fixture credentials never reach cloud services.
+name: multimodal-local-preview
+services:
+  postgres:
+    image: postgres:18-bookworm
+    environment:
+      POSTGRES_USER: preview
+      POSTGRES_PASSWORD: preview
+      POSTGRES_DB: preview
+    ports:
+      - "127.0.0.1:15432:5432"
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U preview -d preview"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  qdrant:
+    image: qdrant/qdrant:v1.19.1
+    ports:
+      - "127.0.0.1:16333:6333"
+    volumes:
+      - qdrant:/qdrant/storage
+  app: &collection-app
+    image: multimodal-space:local
+    platform: linux/amd64
+    environment: &collection-environment
+      CATALOGUE_TRANSPORT: postgres
+      DATABASE_URL: postgresql://preview:preview@postgres:5432/preview
+      DATABASE_URL_UNPOOLED: postgresql://preview:preview@postgres:5432/preview
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ""
+      QDRANT_COLLECTION_NAME: smg_images_siglip2_preview
+      EMBEDDING_MODEL: google/siglip2-base-patch16-224
+      EMBEDDING_REVISION: 75de2d55ec2d0b4efc50b3e9ad70dba96a7b2fa2
+      EMBEDDING_DIMENSIONS: "768"
+      IMAGE_ROOT: /app/data/images
+      HF_HUB_OFFLINE: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      LOGFIRE_SEND_TO_LOGFIRE: "false"
+      AGENT_ENABLED: "false"
+    ports:
+      - "127.0.0.1:7860:7860"
+    volumes:
+      - &collection-images ../data/local-preview/images:/app/data/images:ro
+      - &model-cache ../data/models:/app/data/models:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/api/v1/status', timeout=5).close()"]
+      interval: 5s
+      timeout: 6s
+      retries: 30
+  web:
+    <<: *collection-app
+    image: multimodal-web:local
+    profiles: [web]
+    environment:
+      <<: *collection-environment
+      EXPLORER_PUBLIC_URL: http://127.0.0.1:7862
+      EXPLORER_GATEWAY_URL: http://127.0.0.1:7860
+      EXPLORER_STATE_DIR: /app/data/web-state
+      EXPLORER_OAUTH_CLIENT_ID: ${EXPLORER_OAUTH_CLIENT_ID:-}
+      EXPLORER_OAUTH_CLIENT_SECRET: ${EXPLORER_OAUTH_CLIENT_SECRET:-}
+      EXPLORER_SESSION_SECRET: ${EXPLORER_SESSION_SECRET:-}
+      EXPLORER_API_KEY: ${EXPLORER_API_KEY:-}
+      EXPLORER_MODEL: ${EXPLORER_MODEL:-}
+    ports:
+      - "127.0.0.1:7862:7860"
+    volumes:
+      - *collection-images
+      - *model-cache
+      - ../data/local-preview/web-state:/app/data/web-state
+volumes:
+  postgres: {}
+  qdrant: {}
