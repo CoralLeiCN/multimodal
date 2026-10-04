@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import ROOT, Settings
+from app.explore.concurrency import blocking
 from app.explore.config import ExplorerSettings
 from app.explore.routes import router
 from app.explore.service import Explorer
@@ -26,10 +27,10 @@ def create_app(
     @asynccontextmanager
     async def extension(app):
         service = Explorer(app.state.search, options, runner=runner)
-        service.start()
-        service.lock_watch = asyncio.create_task(service.watch_lock())
-        app.state.explorer = service
         try:
+            await blocking(service.start)
+            service.lock_watch = asyncio.create_task(service.watch_lock())
+            app.state.explorer = service
             yield
         finally:
             await service.close()

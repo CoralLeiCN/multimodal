@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import ValidationError
 
 from app.explore import auth
+from app.explore.concurrency import blocking
 from app.explore.contracts import Message, NewConversation, ToolCall
 
 router = APIRouter(prefix="/explorer", tags=["explorer"])
@@ -52,7 +53,7 @@ def explorer_conversations(request: Request, owner: User):
 
 
 @router.post("/conversations", status_code=201)
-async def explorer_create(request: Request, owner: Writer, body: NewConversation):
+def explorer_create(request: Request, owner: Writer, body: NewConversation):
     return request.app.state.explorer.create(owner, body.title)
 
 
@@ -69,12 +70,12 @@ async def explorer_submit(
     body: Message,
     key: Annotated[str, Header(alias="Idempotency-Key")],
 ):
-    return request.app.state.explorer.submit(owner, conversation_id, body, key)
+    return await request.app.state.explorer.submit(owner, conversation_id, body, key)
 
 
 @router.post("/runs/{run_id}/cancel")
 async def explorer_cancel(request: Request, owner: Writer, run_id: str):
-    return request.app.state.explorer.cancel(owner, run_id)
+    return await request.app.state.explorer.cancel(owner, run_id)
 
 
 @router.get("/runs/{run_id}/events")
@@ -89,12 +90,12 @@ async def explorer_events(request: Request, owner: User, run_id: str):
             raise ValueError
     except ValueError:
         raise HTTPException(422, "Invalid event cursor.") from None
-    service.events(owner, run_id, after)
+    await blocking(service.events, owner, run_id, after)
 
     async def stream():
         cursor = after
         while not await request.is_disconnected():
-            records, complete = service.events(owner, run_id, cursor)
+            records, complete = await blocking(service.events, owner, run_id, cursor)
             for item in records:
                 cursor = item["id"]
                 yield f"id: {cursor}\nevent: {item['kind']}\ndata: {json.dumps(item['data'])}\n\n"
@@ -117,7 +118,7 @@ async def explorer_upload(
     service = request.app.state.explorer
     try:
         data = await image.read(service.search.settings.max_image_bytes + 1)
-        return service.save_upload(owner, data)
+        return await blocking(service.save_upload, owner, data)
     finally:
         await image.close()
 

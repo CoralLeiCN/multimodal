@@ -148,7 +148,8 @@ terminals. Set the HF OAuth callback to the frontend origin; see
 `src/components/explorer-panel.tsx` implements account login, private history,
 text/image questions, progress events, verified collection cards, follow-up
 questions, cancellation and idempotent retries. Image and record actions populate
-the composer. Image generation is deferred to a later release.
+the composer. Attachments accept JPEG and PNG, matching the image upload API.
+Image generation is deferred to a later release.
 
 Playwright selects tests using `APP_EDITION=search` (default), `web`, or `studio`.
 Serve the corresponding build and set `PLAYWRIGHT_BASE_URL` when using a port

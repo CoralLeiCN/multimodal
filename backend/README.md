@@ -361,3 +361,9 @@ Configure credentials, origins, private state, concurrency and direct PostgreSQL
 connections using [web setup](../docs/product_versions.md#run-the-web-edition).
 The companion uses separate `explorer_*` tables and an Alembic version table.
 It has no dependency on Studio brand profiles, Gemini or generation tasks.
+
+Database transactions and upload processing run in worker threads so slow I/O
+does not block HTTP requests, SSE delivery or task control. Admission remains
+serialized, and cancellation waits for started transactions before cleanup.
+The companion accepts JPEG and PNG attachments, with the same size and pixel
+limits as image search.

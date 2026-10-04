@@ -255,6 +255,11 @@ resolver can derive a direct Neon endpoint when it is absent. Web migrations
 also use the direct connection. If the supervisor connection fails, active work
 is cancelled and the service requires a restart.
 
+Database transactions, supervisor lock checks and upload processing run outside
+the event loop. Admission is serialized to preserve queue limits. Cancellation
+and shutdown wait for started transactions before clearing runs or releasing
+the supervisor connection.
+
 Mount `EXPLORER_STATE_DIR` on a private durable volume. It stores staged user
 uploads and per-conversation Codex state; PostgreSQL stores ownership and run
 history. Collection images continue to come from the HF mount. Back up private
@@ -288,7 +293,7 @@ not a currency spending cap; configure provider/project spending controls and
 measure live usage before opening access. Runtime token usage is saved with
 results, while Logfire captures run metadata without prompts or provider errors.
 
-The UI supports text or an image with a question, collection ID and image
+The UI supports text or a JPEG/PNG image with a question, collection ID and image
 selection, follow-up turns, account-owned history, streamed tool progress,
 cancellation and recovery after a dropped event connection. Submissions use an
 idempotency key; retrying a lost response reuses it. A failed or restarted worker

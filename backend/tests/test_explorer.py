@@ -1,5 +1,6 @@
 import asyncio
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from app.explore.auth import COOKIE, sign
@@ -30,7 +31,7 @@ def explorer(setup, tmp_path):
         state["payloads"].append(payload)
         while state["wait"]:
             await asyncio.sleep(0.02)
-        accept({"kind": "thread", "id": "thread-fixture"})
+        await accept({"kind": "thread", "id": "thread-fixture"})
         service = app.state.explorer
         args = (
             {"upload_id": payload["upload_id"]}
@@ -47,7 +48,7 @@ def explorer(setup, tmp_path):
             ),
         )
         ids = [result["result"]["results"][0]["image_id"]]
-        accept(
+        await accept(
             {
                 "kind": "result",
                 "result": {
@@ -295,3 +296,17 @@ def test_recovery_fails_uncertain_work_without_replaying(explorer):
             assert session.get(Run, restored["id"]).token_hash is None
     finally:
         asyncio.run(second.close())
+
+
+def test_concurrent_admissions_preserve_the_queue_limit(explorer):
+    client, options, state, _, _ = explorer
+    state["wait"] = True
+    limit = options.max_concurrent * 4
+    conversations = [new(client) for _ in range(limit + 4)]
+    with ThreadPoolExecutor(max_workers=len(conversations)) as pool:
+        responses = list(pool.map(lambda id: send(client, id), conversations))
+    assert sum(response.status_code == 202 for response in responses) == limit
+    assert sum(response.status_code == 429 for response in responses) == 4
+    for response in responses:
+        if response.status_code == 202:
+            client.post(f"/api/v1/explorer/runs/{response.json()['id']}/cancel")

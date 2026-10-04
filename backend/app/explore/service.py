@@ -9,6 +9,7 @@ import signal
 import sys
 import time
 from contextlib import suppress
+from threading import Lock
 
 import logfire
 from fastapi import HTTPException
@@ -19,6 +20,7 @@ from sqlalchemy.pool import NullPool
 
 from app.core.config import ROOT
 from app.explore import tools
+from app.explore.concurrency import blocking, complete
 from app.explore.contracts import Answer
 from app.explore.db import migrate
 from app.explore.models import Conversation, Event, Run, Upload, uid
@@ -40,6 +42,10 @@ class Explorer:
         self.search, self.engine, self.settings = search, search.engine, settings
         self.runner = runner or self.execute
         self.tasks = {}
+        self.cleanups = set()
+        self.admission = asyncio.Lock()
+        self.storage_lock = Lock()
+        self.stopping = False
         self.slots = asyncio.Semaphore(settings.max_concurrent)
         self.lock_connection = None
         self.lock_engine = None
@@ -87,13 +93,16 @@ class Explorer:
         while True:
             await asyncio.sleep(5)
             try:
-                if self.lock_connection is not None:
-                    self.lock_connection.scalar(text("SELECT 1"))
+                await blocking(self.check_lock)
             except SQLAlchemyError:
                 self.ownership_lost = True
                 for task in list(self.tasks.values()):
                     task.cancel()
                 return
+
+    def check_lock(self):
+        if self.lock_connection is not None:
+            self.lock_connection.scalar(text("SELECT 1"))
 
     def release_lock(self):
         if self.lock_connection is not None:
@@ -110,13 +119,19 @@ class Explorer:
                     self.lock_engine = None
 
     async def close(self):
+        self.stopping = True
+        # Finish admission before snapshotting tasks: a committed submission
+        # must acquire its supervisor even if its HTTP request was cancelled.
+        async with self.admission:
+            pass
         if self.lock_watch:
             self.lock_watch.cancel()
             await asyncio.gather(self.lock_watch, return_exceptions=True)
         for task in self.tasks.values():
             task.cancel()
         await asyncio.gather(*list(self.tasks.values()), return_exceptions=True)
-        self.release_lock()
+        await asyncio.gather(*list(self.cleanups), return_exceptions=True)
+        await blocking(self.release_lock)
 
     def conversation(self, session, owner, conversation_id, *, lock=False):
         query = select(Conversation).where(
@@ -130,7 +145,7 @@ class Explorer:
         return row
 
     def create(self, owner, title):
-        with Session(self.engine) as session, session.begin():
+        with self.storage_lock, Session(self.engine) as session, session.begin():
             if (
                 session.scalar(
                     select(func.count())
@@ -184,7 +199,31 @@ class Explorer:
                 "runs": [self.view(r) for r in runs],
             }
 
-    def submit(self, owner, conversation_id, body, key):
+    async def submit(self, owner, conversation_id, body, key):
+        return await complete(self.enqueue(owner, conversation_id, body, key))
+
+    async def enqueue(self, owner, conversation_id, body, key):
+        # Preserve the global queue bound while admissions now yield for I/O.
+        async with self.admission:
+            if self.ownership_lost or self.stopping:
+                raise HTTPException(503, "The conversation service requires a restart.")
+            result, created = await blocking(
+                self.save_run, owner, conversation_id, body, key
+            )
+            if created:
+                run_id = result["id"]
+                if self.ownership_lost or self.stopping:
+                    await blocking(self.fail, run_id, "failed", "interrupted")
+                    await blocking(self.clear_active_run, run_id)
+                    raise HTTPException(
+                        503, "The conversation service requires a restart."
+                    )
+                task = asyncio.create_task(self.perform(run_id))
+                self.tasks[run_id] = task
+                task.add_done_callback(lambda task: self.run_done(run_id, task))
+            return result
+
+    def save_run(self, owner, conversation_id, body, key):
         if not 1 <= len(key) <= 100:
             raise HTTPException(422, "A bounded Idempotency-Key is required.")
         if self.ownership_lost:
@@ -200,7 +239,7 @@ class Explorer:
                     raise HTTPException(
                         409, "Idempotency key already used with different content."
                     )
-                return self.view(existing)
+                return self.view(existing), False
             if not self.settings.ready:
                 raise HTTPException(
                     503, "Configure the Codex API key and model to enable exploration."
@@ -245,17 +284,30 @@ class Explorer:
             row.active_run = run.id
             event(session, run, "status", {"status": "queued"})
             result = self.view(run)
-        run_id = result["id"]
-        task = asyncio.create_task(self.perform(run_id))
-        self.tasks[run_id] = task
-        task.add_done_callback(lambda _: self.release_run(run_id))
-        return result
+        return result, True
 
-    def release_run(self, run_id):
-        self.tasks.pop(run_id, None)
+    def run_done(self, run_id, task):
+        if not task.cancelled() and task.exception() is not None:
+            logfire.error("explorer.run_cleanup_required", run_id=run_id)
+        # A task cancelled before its coroutine starts also needs DB cleanup.
+        cleanup = asyncio.create_task(self.release_run(run_id))
+        self.cleanups.add(cleanup)
+        cleanup.add_done_callback(self.cleanups.discard)
+
+    async def release_run(self, run_id):
+        try:
+            await blocking(self.clear_active_run, run_id)
+        except Exception:  # noqa: BLE001 -- retain safe diagnostics for recovery
+            logfire.error("explorer.cleanup_failed", run_id=run_id)
+        finally:
+            self.tasks.pop(run_id, None)
+
+    def clear_active_run(self, run_id):
         with Session(self.engine) as session, session.begin():
-            run = session.get(Run, run_id)
+            run = session.get(Run, run_id, with_for_update=True)
             if run is not None:
+                if run.status not in TERMINAL:
+                    self.finish(session, run, "cancelled", error="cancelled")
                 row = session.get(
                     Conversation, run.conversation_id, with_for_update=True
                 )
@@ -266,53 +318,56 @@ class Explorer:
         run.status, run.error, run.token_hash = status, error, None
         event(session, run, "status", {"status": status, "error": error})
 
+    def prepare_run(self, run_id, token):
+        with Session(self.engine) as session, session.begin():
+            run = session.get(Run, run_id, with_for_update=True)
+            if run.status in TERMINAL:
+                return None
+            row = session.get(Conversation, run.conversation_id)
+            run.status, run.token_hash = "running", digest(token)
+            run.deadline = time.time() + self.settings.run_timeout
+            event(session, run, "status", {"status": "running"})
+            payload = {
+                "run_id": run.id,
+                "conversation_id": row.id,
+                "thread_id": row.thread_id,
+                "content": run.content,
+                "upload_id": run.upload_id,
+                "model": self.settings.model,
+                "tool_url": f"{self.settings.gateway_url}/api/v1/explorer/internal/{run.id}/tool",
+                "tool_token": token,
+                "api_key": self.settings.api_key.get_secret_value(),
+                "timeout": self.settings.run_timeout,
+                "parent_pid": os.getpid(),
+            }
+            if run.upload_id:
+                data, _ = self.read_upload(row.owner, run.upload_id)
+                payload["image"] = tools.preview(data)
+        return payload
+
     async def perform(self, run_id):
         try:
             async with self.slots:
                 token = secrets.token_urlsafe(32)
-                with Session(self.engine) as session, session.begin():
-                    run = session.get(Run, run_id, with_for_update=True)
-                    if run.status in TERMINAL:
-                        return
-                    row = session.get(Conversation, run.conversation_id)
-                    run.status, run.token_hash = "running", digest(token)
-                    run.deadline = time.time() + self.settings.run_timeout
-                    event(session, run, "status", {"status": "running"})
-                    payload = {
-                        "run_id": run.id,
-                        "conversation_id": row.id,
-                        "thread_id": row.thread_id,
-                        "content": run.content,
-                        "upload_id": run.upload_id,
-                        "model": self.settings.model,
-                        "tool_url": f"{self.settings.gateway_url}/api/v1/explorer/internal/{run.id}/tool",
-                        "tool_token": token,
-                        "api_key": self.settings.api_key.get_secret_value(),
-                        "timeout": self.settings.run_timeout,
-                        "parent_pid": os.getpid(),
-                    }
-                    if run.upload_id:
-                        data, _ = self.read_upload(row.owner, run.upload_id)
-                        payload["image"] = tools.preview(data)
+                payload = await blocking(self.prepare_run, run_id, token)
+                if payload is None:
+                    return
                 with logfire.span(
                     "explorer.run", run_id=run_id, model=self.settings.model
                 ):
                     async with asyncio.timeout(self.settings.run_timeout):
                         await self.runner(
-                            payload, lambda data: self.accept(run_id, data)
+                            payload, lambda data: blocking(self.accept, run_id, data)
                         )
-                with Session(self.engine) as session, session.begin():
-                    run = session.get(Run, run_id, with_for_update=True)
-                    if run.status not in TERMINAL:
-                        self.finish(session, run, "failed", error="incomplete_response")
+                await blocking(self.fail, run_id, "failed", "incomplete_response")
         except asyncio.CancelledError:
-            self.fail(run_id, "cancelled", "cancelled")
+            await blocking(self.fail, run_id, "cancelled", "cancelled")
             raise
         except TimeoutError:
-            self.fail(run_id, "timed_out", "timed_out")
+            await blocking(self.fail, run_id, "timed_out", "timed_out")
         except Exception:  # noqa: BLE001 -- sanitize the provider boundary
             # SDK errors can contain prompts, credentials and server stderr.
-            self.fail(run_id, "failed", "codex_unavailable")
+            await blocking(self.fail, run_id, "failed", "codex_unavailable")
 
     def fail(self, run_id, status, error):
         with Session(self.engine) as session, session.begin():
@@ -380,14 +435,20 @@ class Explorer:
             raise HTTPException(404, "Run not found.")
         return run
 
-    def cancel(self, owner, run_id):
+    async def cancel(self, owner, run_id):
+        return await complete(self.cancel_run(owner, run_id))
+
+    async def cancel_run(self, owner, run_id):
+        await blocking(self.save_cancellation, owner, run_id)
+        if task := self.tasks.get(run_id):
+            task.cancel()
+        return {"status": "cancelled"}
+
+    def save_cancellation(self, owner, run_id):
         with Session(self.engine) as session, session.begin():
             run = self.authorize_run(session, owner, run_id, lock=True)
             if run.status not in TERMINAL:
                 self.finish(session, run, "cancelled", error="cancelled")
-        if task := self.tasks.get(run_id):
-            task.cancel()
-        return {"status": "cancelled"}
 
     def events(self, owner, run_id, after):
         with Session(self.engine) as session:
@@ -413,7 +474,7 @@ class Explorer:
 
     def save_upload(self, owner, data):
         mime, _, _ = validate_image(data, self.search.settings)
-        with Session(self.engine) as session, session.begin():
+        with self.storage_lock, Session(self.engine) as session, session.begin():
             if (
                 session.scalar(
                     select(func.count())
@@ -502,7 +563,7 @@ class Explorer:
         folder = (
             self.settings.state_dir.resolve() / "threads" / payload["conversation_id"]
         )
-        folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+        await blocking(folder.mkdir, parents=True, exist_ok=True, mode=0o700)
         env = {
             "PATH": os.defpath,
             "PYTHONPATH": str(ROOT / "backend"),
@@ -527,7 +588,7 @@ class Explorer:
             await process.stdin.drain()
             process.stdin.close()
             async for line in process.stdout:
-                accept(json.loads(line))
+                await accept(json.loads(line))
             if await process.wait() != 0:
                 raise RuntimeError("Codex worker failed")
         finally:

@@ -405,7 +405,7 @@ export function ExplorerPanel({ selection }: { selection?: { text: string; nonce
                       ref={uploadInput}
                       aria-label="Attach image to conversation"
                       type="file"
-                      accept="image/jpeg,image/png,image/webp"
+                      accept="image/jpeg,image/png"
                       disabled={locked || !status.ready}
                       onChange={(e) => setFile(e.target.files?.[0])}
                     />
