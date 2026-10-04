@@ -20,7 +20,6 @@ from app.schemas import (
 )
 from app.services.catalogue import Catalogue, PostgresQueries
 from app.services.embeddings import SearchError
-from app.services.metadata import labels
 from app.services.selection import safe_path
 
 
@@ -191,16 +190,9 @@ class SearchService:
     @logfire.instrument("catalogue.filter_options", extract_args=False)
     def filter_options(self) -> FilterOptions:
         generation = self.generation()
-        associations = self.catalogue.associations(generation.id)
-        ranges = [interval for item in associations for interval in item.date_ranges]
         return FilterOptions(
             index_version=generation.id,
-            places=labels(value for item in associations for value in item.places),
-            categories=labels(
-                value for item in associations for value in item.categories
-            ),
-            date_min=min((item["date_from"] for item in ranges), default=None),
-            date_max=max((item["date_to"] for item in ranges), default=None),
+            **self.catalogue.filter_options(generation.id),
         )
 
     @logfire.instrument("catalogue.browse", extract_args=False)

@@ -58,6 +58,11 @@ HTTPS on port 443. Keep the original Neon PostgreSQL `DATABASE_URL`; the adapter
 derives the HTTPS endpoint. Shared SQLAlchemy SELECT expressions remain
 parameterized across both transports. Only Neon hosts are supported by HTTPS;
 requests use read-only batches with bounded timeouts and no redirects.
+Catalogue scans read at most 500 rows per request, continuing after the last
+returned ID. Each page uses a separate request so a complete generation does
+not have to fit Neon's 64 MB HTTP response limit. Filter options fetch distinct
+labels in pages and aggregate year bounds in PostgreSQL, preserving the existing
+Unicode normalization and first display spelling without transferring full records.
 The web edition requires `postgres` for conversation transactions and its worker
 lock. Migration and indexing commands always use native PostgreSQL, independently
 of the search transport. See the [HF configuration](../docs/huggingface_spaces.md#database-connections).
@@ -361,6 +366,9 @@ Configure credentials, origins, private state, concurrency and direct PostgreSQL
 connections using [web setup](../docs/product_versions.md#run-the-web-edition).
 The companion uses separate `explorer_*` tables and an Alembic version table.
 It has no dependency on Studio brand profiles, Gemini or generation tasks.
+Completed runs save token usage for all model requests in that turn, excluding
+earlier turns when the Codex thread resumes and counting repeated usage
+notifications only once.
 
 Database transactions and upload processing run in worker threads so slow I/O
 does not block HTTP requests, SSE delivery or task control. Admission remains

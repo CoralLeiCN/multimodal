@@ -188,6 +188,12 @@ Validated on 26 September 2026 with 100 real collection images:
 - 250 Python tests, including the real Qdrant integration check, 28 browser tests,
   Ruff, Biome, and the frontend build passed.
 
+The 4 October 2026 regression check passed 282 Python tests with PostgreSQL and
+Qdrant, 32 browser tests, Ruff, Biome, and the frontend and Linux amd64 Docker
+builds for search, web and Studio. OpenAPI and client regeneration produced no
+changes. All three containers passed startup and route checks against a fresh
+PostgreSQL catalogue and Qdrant.
+
 The rebuilt search container has no OpenAI, Gemini, Gemini tracing, or S3 SDK
 dependencies. Its source allowlist and fixed search entry point exclude agent models and
 provider runtimes regardless of environment flags.
@@ -221,6 +227,11 @@ have bounded connection/read timeouts, do not follow redirects, and return
 sanitized catalogue errors. The endpoint must be a Neon `ep-…neon.tech` host.
 No native PostgreSQL connection is opened by the search API in this mode.
 
+Neon limits each HTTP response to 64 MB. Catalogue scans use separate requests
+of at most 500 rows, continuing after the last ID rather than an offset.
+Filter options read paged distinct labels and SQL year aggregates, so the full
+association descriptions and attribution are not downloaded to build the filters.
+
 `CATALOGUE_TRANSPORT=postgres` is the default for local PostgreSQL and the web
 edition. It uses SQLAlchemy/psycopg. Both transports execute the queries in
 `backend/app/services/catalogue.py`; filtering, identifiers, attribution and
@@ -238,7 +249,9 @@ runtime does not need `DATABASE_URL_UNPOOLED` or schema-writing permissions.
 
 HTTPS/native parity is tested against disposable PostgreSQL using a Neon protocol
 stand-in, including JSONB filters, pagination, image lookup, attribution, text,
-image and similar search. Tests reject credential redirects and sanitize transport
+image and similar search. Tests also impose a response byte limit, verify complete
+results across pages, and cover failures after an earlier page succeeds.
+Tests reject credential redirects and sanitize transport
 failures. Actual Neon HTTPS access and restart behaviour from an HF Space remain
 hosted acceptance checks. Native Neon connections passed earlier host/Linux tests;
 changing psycopg's connection port to 443 is not supported.

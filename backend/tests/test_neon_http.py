@@ -7,13 +7,16 @@ import pytest
 from app import main, web
 from app.core import db
 from app.core.config import Settings
-from app.models import Generation
+from app.models import Association, Generation, Image
 from app.schemas import MetadataFilters
-from app.services.ingestion import run_ingestion
+from app.services import catalogue
+from app.services.embeddings import SearchError
+from app.services.ingestion import create_generation, run_ingestion
 from app.services.neon_http import NeonHttpQueries, connection, prepare
 from app.services.search import SearchService
 from fastapi.testclient import TestClient
-from sqlalchemy import delete
+from sqlalchemy import delete, select, update
+from sqlalchemy.orm import Session
 
 NEON_URL = (
     "postgresql://reader:fixture-secret@ep-fixture.eu-west-2.aws.neon.tech/catalogue"
@@ -28,7 +31,7 @@ def https_settings(settings=None):
     return Settings(_env_file=None, **values)
 
 
-def postgres_http(engine, requests):
+def postgres_http(engine, requests, *, max_response_bytes=None):
     """Execute exactly the $n SQL and return Neon-compatible raw PG wire values.
 
     Only this test stand-in connects to the disposable local PostgreSQL server.
@@ -80,9 +83,147 @@ def postgres_http(engine, requests):
                         ],
                     }
                 )
-        return httpx.Response(200, json={"results": results})
+        response = httpx.Response(200, json={"results": results})
+        if (
+            max_response_bytes is not None
+            and len(response.content) > max_response_bytes
+        ):
+            return httpx.Response(413, json={"message": "Response size limit exceeded"})
+        return response
 
     return httpx.MockTransport(handle)
+
+
+@pytest.mark.parametrize("page_size", [1, 2])
+def test_large_catalogue_reads_fit_separate_https_responses(
+    setup, monkeypatch, page_size
+):
+    settings, engine, selected, report, _, vectors, embeddings = setup
+    monkeypatch.setattr(catalogue, "CATALOGUE_PAGE_SIZE", page_size)
+    for item in selected:
+        item["title"] += "x" * 5000
+        item["associations"][0].update(record_uid="co123", description="y" * 5000)
+    generation = create_generation(engine, settings, selected, report)
+    run_ingestion(engine, settings, generation, embeddings, vectors)
+    requests = []
+    queries = NeonHttpQueries(
+        https_settings(settings),
+        transport=postgres_http(engine, requests, max_response_bytes=14_000),
+    )
+    try:
+        # Reproduce Neon's byte limit at a smaller size with real PostgreSQL rows.
+        # A whole-generation response fails for either table; individual pages fit.
+        for model in (Image, Association):
+            with pytest.raises(SearchError, match="catalogue is unavailable"):
+                queries.read(select(model).where(model.generation_id == generation))
+        store = catalogue.Catalogue(queries)
+        expected_ids = sorted(item["image_id"] for item in selected)
+        assert [image.image_id for image in store.images(generation)] == expected_ids
+        assert (
+            sorted(a.image_id for a in store.associations(generation)) == expected_ids
+        )
+        assert store.record_images(generation, "co123") == expected_ids
+        assert store.images(generation, []) == []
+        assert store.associations(generation, []) == []
+
+        native = SearchService(engine, settings, vectors, embeddings)
+        https = SearchService(None, settings, vectors, embeddings, catalogue=store)
+        assert https.status().status == "ready"
+        assert https.lookup_record("co123") == native.lookup_record("co123")
+        assert https.search(text="red").results == native.search(text="red").results
+        requests.clear()
+        assert https.filter_options() == native.filter_options()
+        # Filter options must not transfer titles, descriptions or licence fields.
+        assert all(
+            "description" not in query["query"]
+            for request in requests
+            for query in json.loads(request.content)["queries"]
+        )
+    finally:
+        queries.close()
+
+
+def test_filter_aggregation_preserves_display_labels_and_empty_bounds(
+    setup, monkeypatch
+):
+    settings, engine, _, _, generation, _vectors, _embeddings = setup
+    monkeypatch.setattr(catalogue, "CATALOGUE_PAGE_SIZE", 2)
+    with Session(engine) as session, session.begin():
+        rows = list(session.scalars(select(Association).order_by(Association.id)))
+        rows[0].places = ["new  YORK", "New York", "", "東京", " London ", "Berlin"]
+        rows[1].places = ["ＮＥＷ ＹＯＲＫ", "LONDON", "東京", "Québec"]
+        rows[2].places = ["london", "Paris", "Berlin", "New York"]
+        rows[0].categories = ["Photography", " PHOTOGRAPHY", "optics"]
+        rows[1].categories = ["ＯＰＴＩＣＳ", "Art"]
+        rows[2].categories = []
+        rows[0].date_ranges = [
+            {"date_from": -400, "date_to": -350},
+            {"date_from": 1850, "date_to": 1870},
+        ]
+        rows[1].date_ranges = [{"date_from": 2000, "date_to": 2010}]
+        rows[2].date_ranges = []
+    queries = NeonHttpQueries(
+        https_settings(settings), transport=postgres_http(engine, [])
+    )
+    try:
+        stores = (
+            catalogue.Catalogue(catalogue.PostgresQueries(engine)),
+            catalogue.Catalogue(queries),
+        )
+        expected = {
+            "places": ["Berlin", "London", "new  YORK", "Paris", "Québec", "東京"],
+            "categories": ["Art", "optics", "Photography"],
+            "date_min": -400,
+            "date_max": 2010,
+        }
+        for store in stores:
+            assert store.filter_options(generation) == expected
+            assert store.filter_options("absent-generation") == {
+                "places": [],
+                "categories": [],
+                "date_min": None,
+                "date_max": None,
+            }
+        with engine.begin() as connection:
+            connection.execute(update(Association).values(date_ranges=[]))
+        for store in stores:
+            assert store.filter_options(generation) == {
+                **expected,
+                "date_min": None,
+                "date_max": None,
+            }
+    finally:
+        queries.close()
+
+
+def test_failed_catalogue_page_never_marks_partial_index_ready(setup, monkeypatch):
+    settings, engine, _, _, generation, vectors, embeddings = setup
+    run_ingestion(engine, settings, generation, embeddings, vectors)
+    monkeypatch.setattr(catalogue, "CATALOGUE_PAGE_SIZE", 2)
+    transport = postgres_http(engine, [])
+    handle = transport.handle_request
+    failing = True
+
+    def interrupted(request):
+        if failing and any(
+            "images.image_id >" in query["query"]
+            for query in json.loads(request.content)["queries"]
+        ):
+            raise httpx.ReadTimeout("page unavailable", request=request)
+        return handle(request)
+
+    monkeypatch.setattr(transport, "handle_request", interrupted)
+    queries = NeonHttpQueries(https_settings(settings), transport=transport)
+    try:
+        search = SearchService(
+            None, settings, vectors, embeddings, catalogue=catalogue.Catalogue(queries)
+        )
+        assert search.status().status == "unavailable"
+        assert not search._verified
+        failing = False
+        assert search.status().status == "ready"
+    finally:
+        queries.close()
 
 
 def test_https_matches_native_search_without_native_startup(setup, monkeypatch):

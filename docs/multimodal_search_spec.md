@@ -234,6 +234,11 @@ and pool timeouts, no redirects, and sanitized failures. Catalogue failures
 produce `catalogue_unavailable` (503); status reports `unavailable`. A migrated
 catalogue without a published generation remains `empty`. The web edition uses
 native PostgreSQL for durable conversations and the supervisor lock.
+Both transports page image and association reads by their stable IDs, with at
+most 500 rows per request. Exact record lookup also pages its distinct image IDs.
+HTTPS pages use separate requests to avoid sending the whole generation in one
+response. Reads target a published generation; stop the APIs during publication
+as required by the shared retrieval contract.
 Settings load `.env`, then `.env.local`, then process environment overrides.
 PostgreSQL filters use JSONB array predicates with the same record and date
 interval boundaries as Qdrant. Missing or non-PostgreSQL database configuration
@@ -466,6 +471,10 @@ PostgreSQL browsing uses equivalent JSONB predicates, including the same associa
 boundaries. Filter options list the active generation's available labels and
 year extrema; they do not change based on current filters. Catalogue browsing and
 options remain usable during a Qdrant outage.
+PostgreSQL selects distinct raw labels and their first association/array position,
+returned in pages, and computes minimum/maximum years. Python retains Unicode
+normalization, label sorting and the first display spelling. Empty date metadata
+returns null bounds. Filter-option queries do not fetch full association records.
 [Sources: Qdrant payload indexes](https://qdrant.tech/documentation/manage-data/indexing/),
 [nested filters](https://qdrant.tech/documentation/search/filtering/).
 
