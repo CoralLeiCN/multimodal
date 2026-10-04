@@ -77,6 +77,81 @@ test("retries with the same idempotency key and cancels a pending turn", async (
   await expect(page.getByRole("log")).toContainText("Exploration cancelled")
 })
 
+for (const status of [409, 422]) {
+  test(`unlocks the draft and conversation controls after HTTP ${status}`, async ({page}) => {
+    const mock = await mockExplorer(page)
+    const endpoint = "**/api/v1/explorer/conversations/*/messages"
+    const message = status === 409
+      ? "Start a new conversation to continue exploring."
+      : "Check the message and try again."
+    let rejectedKey = ""
+    await page.route(endpoint, route => {
+      rejectedKey = route.request().headers()["idempotency-key"]
+      return route.fulfill({status, json: {detail: message}})
+    })
+    await page.goto("/")
+    await page.getByRole("button", {name: "Open collection companion"}).click()
+    await page.getByLabel("Ask about the collection").fill("Find cameras")
+    await page.getByRole("button", {name: "Send exploration message"}).click()
+    await expect(page.getByRole("alert")).toHaveText(message)
+    await expect(page.getByLabel("Ask about the collection")).toBeEnabled()
+    await expect(page.getByLabel("Ask about the collection")).toHaveValue("Find cameras")
+    await expect(page.getByLabel("Collection conversation", {exact: true})).toBeEnabled()
+    await expect(page.getByRole("button", {name: "New collection conversation"})).toBeEnabled()
+    await expect(page.getByRole("button", {name: "Retry message"})).toHaveCount(0)
+    if (status === 409) {
+      await page.getByRole("button", {name: "New collection conversation"}).click()
+      await expect(page.getByLabel("Collection conversation", {exact: true})).toHaveValue("")
+      await expect(page.getByLabel("Ask about the collection")).toHaveValue("")
+    } else {
+      await page.unroute(endpoint)
+      await page.getByLabel("Ask about the collection").fill("Find microscopes")
+      await page.getByRole("button", {name: "Send exploration message"}).click()
+      await expect(page.getByRole("log")).toContainText("catalogue identifies")
+      expect(mock.submissions[0].content).toBe("Find microscopes")
+      expect(mock.submissions[0].key).not.toBe(rejectedKey)
+    }
+  })
+}
+
+test("preserves the retry key after a server error", async ({page}) => {
+  const mock = await mockExplorer(page)
+  const endpoint = "**/api/v1/explorer/conversations/*/messages"
+  let uncertainKey = ""
+  await page.route(endpoint, route => {
+    uncertainKey = route.request().headers()["idempotency-key"]
+    return route.fulfill({status: 503, json: {detail: "Temporarily unavailable."}})
+  })
+  await page.goto("/")
+  await page.getByRole("button", {name: "Open collection companion"}).click()
+  await page.getByLabel("Ask about the collection").fill("Find cameras")
+  await page.getByRole("button", {name: "Send exploration message"}).click()
+  await expect(page.getByRole("button", {name: "Retry message"})).toBeVisible()
+  await expect(page.getByLabel("Ask about the collection")).toBeDisabled()
+  await page.unroute(endpoint)
+  await page.getByRole("button", {name: "Retry message"}).click()
+  await expect(page.getByRole("log")).toContainText("catalogue identifies")
+  expect(mock.submissions[0].key).toBe(uncertainKey)
+})
+
+test("preserves an accepted message's retry key when history returns HTTP 404", async ({page}) => {
+  const mock = await mockExplorer(page)
+  await page.route("**/api/v1/explorer/conversations/chat-1", route => {
+    if (mock.submissions.length === 1)
+      return route.fulfill({status: 404, json: {detail: "History unavailable."}})
+    return route.fallback()
+  })
+  await page.goto("/")
+  await page.getByRole("button", {name: "Open collection companion"}).click()
+  await page.getByLabel("Ask about the collection").fill("Find cameras")
+  await page.getByRole("button", {name: "Send exploration message"}).click()
+  await page.getByRole("button", {name: "Retry message"}).click()
+  await expect(page.getByRole("log")).toContainText("catalogue identifies")
+  expect(mock.submissions).toHaveLength(2)
+  expect(mock.submissions[1].key).toBe(mock.submissions[0].key)
+  await expect(page.getByRole("button", {name: "Retry message"})).toHaveCount(0)
+})
+
 test("accepts an image and fits the phone viewport", async ({page}) => {
   const mock = await mockExplorer(page)
   await page.setViewportSize({width: 390, height: 844})

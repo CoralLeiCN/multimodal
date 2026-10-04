@@ -25,19 +25,29 @@ const toolLabels: Record<string, string> = {
   get_image_details: "Inspecting collection evidence…",
   lookup_record: "Looking up the collection ID…",
 }
+class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message)
+  }
+}
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`/api/v1/explorer${path}`, {
     credentials: "same-origin",
     ...options,
   })
-  const data = await response.json()
-  if (!response.ok)
-    throw new Error(
-      typeof (data.message || data.detail) === "string"
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new ApiError(
+      response.status,
+      typeof (data?.message || data?.detail) === "string"
         ? data.message || data.detail
         : "Check your message, image and request settings.",
     )
-  return data
+  }
+  return response.json()
 }
 const post = <T,>(path: string, body: unknown, key?: string) =>
   api<T>(path, {
@@ -153,6 +163,7 @@ export function ExplorerPanel({ selection }: { selection?: { text: string; nonce
     setBusy(true)
     setError("")
     let submission = previous
+    let accepted = false
     try {
       if (!submission) {
         let id = conversation
@@ -180,6 +191,7 @@ export function ExplorerPanel({ selection }: { selection?: { text: string; nonce
         { content: submission.content, upload_id: submission.upload_id },
         submission.key,
       )
+      accepted = true
       historyEpoch.current += 1
       setRetry(undefined)
       setDraft("")
@@ -187,7 +199,11 @@ export function ExplorerPanel({ selection }: { selection?: { text: string; nonce
       setHistory(await api<History>(`/conversations/${submission.conversation}`))
     } catch (failure) {
       setError(messageOf(failure))
-      if (submission) setRetry(submission)
+      // A rejected POST can be edited or abandoned. An uncertain outcome (including
+      // a failed history refresh after acceptance) must retain its idempotency key.
+      const rejected =
+        !accepted && failure instanceof ApiError && failure.status >= 400 && failure.status < 500
+      setRetry(rejected ? undefined : submission)
     } finally {
       sendLock.current = false
       setBusy(false)

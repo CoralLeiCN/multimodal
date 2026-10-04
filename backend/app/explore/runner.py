@@ -105,6 +105,7 @@ async def drive(payload, folder, *, client_factory=AsyncCodex):
         turn = await thread.turn(inputs, output_schema=Answer.model_json_schema())
         final = ""
         usage = {}
+        usage_baseline = None
         try:
             async for notification in turn.stream():
                 data = notification.payload.model_dump(mode="json", by_alias=True)
@@ -119,11 +120,24 @@ async def drive(payload, folder, *, client_factory=AsyncCodex):
                 ):
                     final = data["item"]["text"]
                 if notification.method == "thread/tokenUsage/updated":
-                    total = data.get("tokenUsage", {}).get("last", {})
+                    token_usage = data["tokenUsage"]
+                    total = token_usage["total"]
+                    if usage_baseline is None:
+                        # The first update includes this turn's first request in
+                        # `last`. Subtract it to exclude earlier resumed turns.
+                        usage_baseline = {
+                            key: value - token_usage["last"][key]
+                            for key, value in total.items()
+                        }
+                    # Cumulative deltas count all requests once, even if an
+                    # unchanged usage notification is delivered again.
                     usage = {
-                        "input_tokens": total.get("inputTokens", 0),
-                        "output_tokens": total.get("outputTokens", 0),
-                        "cached_input_tokens": total.get("cachedInputTokens", 0),
+                        "input_tokens": total["inputTokens"]
+                        - usage_baseline["inputTokens"],
+                        "output_tokens": total["outputTokens"]
+                        - usage_baseline["outputTokens"],
+                        "cached_input_tokens": total["cachedInputTokens"]
+                        - usage_baseline["cachedInputTokens"],
                     }
                 if (
                     notification.method == "turn/completed"

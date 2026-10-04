@@ -290,13 +290,17 @@ filesystem and network restrictions on the chosen host before public release.
 Defaults allow two active turns, eight queued/running turns total, 180 seconds
 per turn and 20 collection tool calls. These bounds are configurable. They are
 not a currency spending cap; configure provider/project spending controls and
-measure live usage before opening access. Runtime token usage is saved with
-results, while Logfire captures run metadata without prompts or provider errors.
+measure live usage before opening access. Saved usage includes input, output and
+cached input tokens across every model request in the completed turn. Resumed
+turns exclude earlier usage, and repeated usage notifications do not add tokens.
+Logfire captures run metadata without prompts or provider errors.
 
 The UI supports text or a JPEG/PNG image with a question, collection ID and image
 selection, follow-up turns, account-owned history, streamed tool progress,
 cancellation and recovery after a dropped event connection. Submissions use an
-idempotency key; retrying a lost response reuses it. A failed or restarted worker
+idempotency key; retrying a lost response or server error reuses it. A definite
+HTTP 4xx rejection unlocks the draft and conversation controls so the user can
+correct the request or start another conversation. A failed or restarted worker
 never automatically replays a model request. Startup marks uncertain work as
 interrupted and retains the thread ID for a later deliberate turn.
 
@@ -307,11 +311,15 @@ validation, evidence references, tool expiry/budgets, cancellation, idempotency,
 event cursors and crash recovery. A local fake Responses endpoint exercises the
 real pinned Codex binary and MCP adapter, including image input, thread resume and interruption, without paid
 requests. Browser checks cover both edition routes and the web interaction flows.
-The final local check passed 250 Python tests, 28 browser tests, Ruff, Biome,
-all three frontend builds and both release Docker builds. Artifact inspection
+The 4 October 2026 check passed 282 Python tests, 32 browser tests, Ruff, Biome,
+all three frontend builds and all three Linux amd64 Docker builds. Regenerating
+the OpenAPI schema and TypeScript client produced no changes. All three containers
+passed startup and route checks against a fresh PostgreSQL catalogue and Qdrant.
+
+Earlier artifact inspection
 confirmed that search excludes agent source and SDKs even with the legacy enable
 flag set, and that web excludes Studio. The pinned Linux Codex binary runs in
-the web image. Both containers start against the local fixture; search passes
+the web image. Both release containers started against the local fixture; search passed
 all 100 image checksums, text retrieval, image self-matching and similar-image
 exclusion. The report is `data/local-preview/validation-editions.json` (ignored).
 These fixtures verify integration mechanics; they do not establish model quality.

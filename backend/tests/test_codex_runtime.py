@@ -12,7 +12,10 @@ from app.explore.tools import preview
 from PIL import Image
 
 
-def test_real_codex_runtime_uses_collection_mcp_and_resumes(tmp_path, monkeypatch):
+@pytest.mark.parametrize("repeat_usage", [False, True])
+def test_real_codex_runtime_uses_collection_mcp_and_resumes(
+    tmp_path, monkeypatch, repeat_usage
+):
     from openai_codex.api import AsyncTurnHandle
 
     notifications = []
@@ -23,6 +26,8 @@ def test_real_codex_runtime_uses_collection_mcp_and_resumes(tmp_path, monkeypatc
             if event.method in {"error", "turn/completed"}:
                 notifications.append(event.payload.model_dump(mode="json"))
             yield event
+            if repeat_usage and event.method == "thread/tokenUsage/updated":
+                yield event
 
     monkeypatch.setattr(AsyncTurnHandle, "stream", inspect_stream)
     requests = []
@@ -117,7 +122,7 @@ def test_real_codex_runtime_uses_collection_mcp_and_resumes(tmp_path, monkeypatc
                             "total_tokens": 20,
                             "input_tokens": 10,
                             "output_tokens": 10,
-                            "input_tokens_details": {"cached_tokens": 0},
+                            "input_tokens_details": {"cached_tokens": 4},
                         },
                     },
                 },
@@ -178,7 +183,10 @@ def test_real_codex_runtime_uses_collection_mcp_and_resumes(tmp_path, monkeypatc
                 60,
             )
         )
-        assert len([e for e in emitted if e["kind"] == "result"]) == 2
+        assert [e["usage"] for e in emitted if e["kind"] == "result"] == [
+            {"input_tokens": 20, "output_tokens": 20, "cached_input_tokens": 8},
+            {"input_tokens": 10, "output_tokens": 10, "cached_input_tokens": 4},
+        ]
         assert any(
             c.get("type") == "input_image"
             for i in requests[0]["input"]

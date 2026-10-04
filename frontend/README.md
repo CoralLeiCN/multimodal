@@ -151,6 +151,11 @@ questions, cancellation and idempotent retries. Image and record actions populat
 the composer. Attachments accept JPEG and PNG, matching the image upload API.
 Image generation is deferred to a later release.
 
+A rejected message (HTTP 4xx) keeps the draft editable and allows switching or
+starting a conversation. A network failure or server error retains the same
+submission and idempotency key for retry. A failed history refresh after an
+accepted submission also preserves that key.
+
 Playwright selects tests using `APP_EDITION=search` (default), `web`, or `studio`.
 Serve the corresponding build and set `PLAYWRIGHT_BASE_URL` when using a port
 other than 8000. For example:
