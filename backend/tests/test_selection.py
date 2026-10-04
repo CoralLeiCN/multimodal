@@ -1,9 +1,35 @@
 import json
 
 import pytest
+from app.core.config import Settings
 from app.services.embeddings import SearchError
 from app.services.selection import safe_path, select_images, validate_image
 from PIL import Image
+
+
+@pytest.mark.parametrize("first", ["", "Untitled image"])
+def test_shared_image_uses_first_nonempty_title_and_preserves_sources(tmp_path, first):
+    Image.new("RGB", (4, 4)).save(tmp_path / "shared.png")
+    media = {
+        "@admin": {"uid": "i1"},
+        "@processed": {"medium_thumbnail": {"location": "shared.png"}},
+        "legal": {"rights": [{"licence": "CC BY 4.0"}]},
+    }
+    titles = [first, "Available source title", "Later title"]
+    records = [
+        {
+            "@admin": {"uid": f"co{n}"},
+            "title": [{"value": title}],
+            "multimedia": [media],
+        }
+        for n, title in enumerate(titles)
+    ]
+    path = tmp_path / "records.json"
+    path.write_text(json.dumps(records))
+    images, _ = select_images(Settings(_env_file=None, image_root=tmp_path), [path])
+    assert len(images) == 1
+    assert images[0]["title"] == (first or titles[1])
+    assert [a["title"] for a in images[0]["associations"]] == titles
 
 
 def test_selection_is_bounded_reproducible_and_preserves_metadata(setup, tmp_path):

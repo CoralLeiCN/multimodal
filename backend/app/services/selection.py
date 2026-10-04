@@ -182,6 +182,10 @@ def select_images(
             skipped["invalid_file"] += 1
             continue
         candidate.update(
+            title=next(
+                (item["title"] for item in candidate["associations"] if item["title"]),
+                "Untitled image",
+            ),
             filter_metadata=filter_rows(candidate["associations"]),
             checksum=hashlib.sha256(data).hexdigest(),
             mime_type=mime,

@@ -101,7 +101,7 @@ Submitting the same message and idempotency key returns the original run, includ
 its current status. Reusing the key with different content returns 409. A conversation
 allows only one unfinished turn; another submission returns `conversation_busy`.
 Workspace claims still allow one active task process. There are at most 20 user turns
-per conversation, one Flash preparation call, at most one Flash result-response call,
+per conversation, one harness preparation call, at most one harness result-response call,
 and one initial image plus one revision per execution task. Context is not silently truncated. Clarification is an ordinary
 assistant reply; the user's answer is the next message. Successful generated results
 become the default subject of the next turn. Explicit subject selection overrides it.
@@ -174,7 +174,7 @@ uv run --package multimodal-backend --extra agent python -m app.space --agent-on
 ```
 
 The supervisor sets the internal gateway to `http://127.0.0.1:8002`. The worker
-coordinates Flash chat and launches compiled image tasks as local child processes.
+coordinates harness chat and launches compiled image tasks as local child processes.
 To run the API and worker manually, use `make agent-api PORT=8002` and
 `make agent-worker` in separate terminals with `AGENT_GATEWAY_URL=http://127.0.0.1:8002`.
 Use only one worker per workspace. A restart fails interrupted tasks without
@@ -252,9 +252,10 @@ or selected as `subject_asset_id` for a follow-up edit. Task errors and cancella
 remain visible in history; retrying a lost HTTP submission reuses its original key.
 The `/create` page edits the six brand design fields; image generation happens in chat.
 
-Planning and evaluation use GenerateContent's JSON Schema field for strict
-Pydantic contracts. Restart the API and worker after updating backend code;
-already-running processes retain their previously imported provider adapter.
+Planning and evaluation use the OpenAI client's Chat Completions parsing API with
+Pydantic response schemas. Gemini is used only for image generation. Restart the
+API and worker after updating backend code; already-running processes retain
+their previously imported provider adapter.
 
 ## Brand design templates
 

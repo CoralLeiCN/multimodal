@@ -1,21 +1,26 @@
 import { ArrowUp, LoaderCircle, MessageCircle, Plus, X } from "lucide-react"
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react"
-import type { ImageRead } from "../client/api"
+import {
+  explorerCancel,
+  explorerConversations,
+  explorerCreate,
+  explorerHistory,
+  explorerLogout,
+  explorerStatus,
+  explorerSubmit,
+  explorerUpload,
+} from "../client/api"
+import type {
+  ExplorerConversation as Conversation,
+  ExplorerHistory as History,
+  Message,
+  ExplorerStatus as Status,
+} from "../client/generated"
+import { Licence } from "./licence"
 import { Button } from "./ui/button"
 import "./explorer.css"
 
-type Run = {
-  id: string
-  content: string
-  status: string
-  answer: string
-  results: ImageRead[]
-  error: string | null
-}
-type Conversation = { id: string; title: string }
-type History = Conversation & { runs: Run[] }
-type Status = { authenticated: boolean; ready: boolean; auth_ready: boolean }
-type Submission = { conversation: string; key: string; content: string; upload_id?: string }
+type Submission = Message & { conversation: string; key: string }
 const terminal = new Set(["succeeded", "failed", "cancelled", "timed_out"])
 const toolLabels: Record<string, string> = {
   search_text: "Searching descriptions…",
@@ -33,28 +38,24 @@ class ApiError extends Error {
     super(message)
   }
 }
-async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`/api/v1/explorer${path}`, {
-    credentials: "same-origin",
-    ...options,
-  })
+async function readExplorer<T>(
+  request: Promise<{ data?: T; error?: unknown; response?: Response }>,
+): Promise<T> {
+  const { data, error, response } = await request
+  if (!response) {
+    throw error instanceof Error ? error : new Error("We couldn't reach the collection.")
+  }
   if (!response.ok) {
-    const data = await response.json().catch(() => null)
+    const body = error as { message?: unknown; detail?: unknown } | null
+    const message = body?.message || body?.detail
     throw new ApiError(
       response.status,
-      typeof (data?.message || data?.detail) === "string"
-        ? data.message || data.detail
-        : "Check your message, image and request settings.",
+      typeof message === "string" ? message : "Check your message, image and request settings.",
     )
   }
-  return response.json()
+  if (data === undefined) throw new Error("The server returned an empty response.")
+  return data
 }
-const post = <T,>(path: string, body: unknown, key?: string) =>
-  api<T>(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...(key ? { "Idempotency-Key": key } : {}) },
-    body: JSON.stringify(body),
-  })
 const messageOf = (error: unknown) =>
   error instanceof Error ? error.message : "The request failed."
 
@@ -84,9 +85,9 @@ export function ExplorerPanel({ selection }: { selection?: { text: string; nonce
   const locked = busy || Boolean(pending) || Boolean(retry)
 
   const refresh = useCallback(async () => {
-    const current = await api<Status>("/status")
+    const current = await readExplorer(explorerStatus())
     setStatus(current)
-    if (current.authenticated) setConversations(await api<Conversation[]>("/conversations"))
+    if (current.authenticated) setConversations(await readExplorer(explorerConversations()))
   }, [])
   useEffect(() => {
     if (open) void refresh().catch((e) => setError(messageOf(e)))
@@ -108,7 +109,7 @@ export function ExplorerPanel({ selection }: { selection?: { text: string; nonce
     }
     let active = true
     const epoch = historyEpoch.current
-    void api<History>(`/conversations/${conversation}`)
+    void readExplorer(explorerHistory({ path: { conversation_id: conversation } }))
       .then((data) => {
         if (active && historyEpoch.current === epoch) setHistory(data)
       })
@@ -125,7 +126,7 @@ export function ExplorerPanel({ selection }: { selection?: { text: string; nonce
     let active = true
     const source = new EventSource(`/api/v1/explorer/runs/${activeRun}/events`)
     const load = () =>
-      api<History>(`/conversations/${conversation}`)
+      readExplorer(explorerHistory({ path: { conversation_id: conversation } }))
         .then((data) => {
           if (active) setHistory(data)
         })
@@ -168,16 +169,16 @@ export function ExplorerPanel({ selection }: { selection?: { text: string; nonce
       if (!submission) {
         let id = conversation
         if (!id) {
-          const created = await post<Conversation>("/conversations", { title: draft.slice(0, 80) })
+          const created = await readExplorer(
+            explorerCreate({ body: { title: draft.slice(0, 80) } }),
+          )
           id = created.id
           setConversation(id)
           setConversations((current) => [created, ...current])
         }
         let uploadId: string | undefined
         if (file) {
-          const body = new FormData()
-          body.append("image", file)
-          uploadId = (await api<{ id: string }>("/uploads", { method: "POST", body })).id
+          uploadId = (await readExplorer(explorerUpload({ body: { image: file } }))).id
         }
         submission = {
           conversation: id,
@@ -186,17 +187,21 @@ export function ExplorerPanel({ selection }: { selection?: { text: string; nonce
           key: crypto.randomUUID(),
         }
       }
-      await post<Run>(
-        `/conversations/${submission.conversation}/messages`,
-        { content: submission.content, upload_id: submission.upload_id },
-        submission.key,
+      await readExplorer(
+        explorerSubmit({
+          path: { conversation_id: submission.conversation },
+          body: { content: submission.content, upload_id: submission.upload_id },
+          headers: { "Idempotency-Key": submission.key },
+        }),
       )
       accepted = true
       historyEpoch.current += 1
       setRetry(undefined)
       setDraft("")
       setFile(undefined)
-      setHistory(await api<History>(`/conversations/${submission.conversation}`))
+      setHistory(
+        await readExplorer(explorerHistory({ path: { conversation_id: submission.conversation } })),
+      )
     } catch (failure) {
       setError(messageOf(failure))
       // A rejected POST can be edited or abandoned. An uncertain outcome (including
@@ -305,7 +310,7 @@ export function ExplorerPanel({ selection }: { selection?: { text: string; nonce
                   variant="ghost"
                   disabled={busy}
                   onClick={() =>
-                    void post("/auth/logout", {})
+                    void readExplorer(explorerLogout())
                       .then(() => {
                         setStatus({ ...status, authenticated: false })
                         setConversation("")
@@ -343,9 +348,15 @@ export function ExplorerPanel({ selection }: { selection?: { text: string; nonce
                                 <a href={a.source_url} target="_blank" rel="noreferrer">
                                   {a.record_uid}
                                 </a>{" "}
-                                · {a.licence}
+                                · <Licence value={a.licence} />
                                 <br />
                                 {a.credit}
+                                {a.copyright && (
+                                  <>
+                                    <br />
+                                    {a.copyright}
+                                  </>
+                                )}
                               </p>
                             ))}
                             <Button
@@ -381,8 +392,12 @@ export function ExplorerPanel({ selection }: { selection?: { text: string; nonce
                   <Button
                     variant="ghost"
                     onClick={() =>
-                      void post(`/runs/${pending.id}/cancel`, {})
-                        .then(() => api<History>(`/conversations/${conversation}`))
+                      void readExplorer(explorerCancel({ path: { run_id: pending.id } }))
+                        .then(() =>
+                          readExplorer(
+                            explorerHistory({ path: { conversation_id: conversation } }),
+                          ),
+                        )
                         .then((data) => {
                           if (conversationRef.current === data.id) setHistory(data)
                         })

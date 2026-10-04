@@ -1,4 +1,8 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.schemas import ImageRead
 
 
 class Contract(BaseModel):
@@ -22,3 +26,47 @@ class Answer(Contract):
 class ToolCall(Contract):
     name: str
     arguments: dict = Field(default_factory=dict)
+
+
+class ExplorerStatus(BaseModel):
+    authenticated: bool
+    ready: bool
+    auth_ready: bool
+
+
+class ExplorerConversation(BaseModel):
+    id: str
+    title: str
+
+
+class ExplorerImage(ImageRead):
+    index_version: str
+
+
+class ExplorerRun(BaseModel):
+    id: str
+    content: str
+    upload_id: str | None
+    status: Literal[
+        "queued", "running", "succeeded", "failed", "cancelled", "timed_out"
+    ]
+    answer: str
+    results: list[ExplorerImage]
+    error: str | None
+    usage: dict[str, int]
+
+
+class ExplorerHistory(ExplorerConversation):
+    runs: list[ExplorerRun]
+
+
+class ExplorerUpload(BaseModel):
+    id: str
+
+
+class ExplorerCancellation(BaseModel):
+    status: Literal["cancelled"]
+
+
+class ExplorerLogout(BaseModel):
+    signed_out: bool

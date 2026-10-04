@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.models import Association, Generation, Image, ServiceState
+from app.services.deadline import check_deadline
 from app.services.embeddings import SearchError
 from app.services.metadata import catalogue_filter, labels
 
@@ -30,6 +31,7 @@ class PostgresQueries:
         self.engine = engine
 
     def read(self, *statements):
+        check_deadline()
         try:
             with self.engine.connect() as connection:
                 return [
@@ -66,12 +68,15 @@ class Catalogue:
             after = rows[-1][key.name]
 
     def images(self, generation_id, ids=None):
+        return list(self.iter_images(generation_id, ids))
+
+    def iter_images(self, generation_id, ids=None):
         statement = select(Image).where(Image.generation_id == generation_id)
         if ids is not None:
             statement = statement.where(Image.image_id.in_(ids))
-        return [
-            Image.model_validate(row) for row in self._rows(statement, Image.image_id)
-        ]
+        for row in self._rows(statement, Image.image_id):
+            check_deadline()
+            yield Image.model_validate(row)
 
     def associations(self, generation_id, ids=None):
         statement = select(Association).where(

@@ -3,7 +3,8 @@
 [English](chat_agent_backend.md) | 简体中文
 
 本文描述现有 Image Studio 原型。首个 Web 版本使用 Codex 探索馆藏，生图留待后续。
-Codex 接入尚未实现，架构和实施顺序见[版本与 harness 决策](product_versions.md)。
+Codex 馆藏探索已在独立 Web 版本中实现；本文的 Studio API 不提供该接入。
+架构和待完成的托管验证见[版本与 harness 决策](product_versions.md)。
 
 英文版为主文档。此后端实现“配置公司品牌 → 开启聊天 → 引用搜索结果图片 ID →
 按品牌风格生成 → 在同一聊天继续修改”的产品流程。设置 `AGENT_ENABLED=true` 后，
@@ -59,7 +60,7 @@ colors、preserve、avoid 的明确覆盖会合并到任务里，未指定的品
 助手文字和附件原子写入会话。SSE 提供执行进度，并非逐 token 文本流；完成后读取会话。
 失败／取消保留用户消息与运行状态，不伪造成功回复。相同幂等键与内容返回原 run；
 内容不同返回 409。同一会话只接受一个未完成轮次，否则返回 `conversation_busy`。
-工作空间最多一个活动 任务进程。每会话最多 20 条用户消息，每轮一次 Flash 需求整理、最多一次 Flash 结果回复，
+工作空间最多一个活动任务进程。每会话最多 20 条用户消息，每轮一次 harness 需求整理、最多一次 harness 结果回复，
 执行任务最多 1 张初始图和 1 次修订；上下文不静默截断。澄清问题是普通助手消息，回答作为下一轮。
 成功生成的最后一张图成为下一轮默认主体，显式选图可以覆盖它。
 
@@ -134,7 +135,8 @@ Agent 读取 `.env` 和 `.env.local`，后者优先。上传图片生图不依�
 结果支持下载和选作后续编辑对象，取消和失败状态会保留。请求响应丢失后的重试使用相同
 幂等键，避免重复提交。Image Studio 的 `/create` 页面配置六项品牌设计字段。
 
-规划和评估通过 GenerateContent 的 JSON Schema 字段传递严格的 Pydantic 契约。
+规划和评估使用 OpenAI 客户端的 Chat Completions 解析接口和 Pydantic 响应契约。
+Gemini 仅用于图片生成。
 更新后端代码后需重启 API 和 worker，已运行的进程不会自动加载 provider 修复。
 
 聊天执行端同时接受图片 UUID 和 `co41679` 这样的藏品记录 ID。可信网关通过

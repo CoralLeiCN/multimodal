@@ -2,7 +2,7 @@
 
 import { type Client, formDataBodySerializer, type Options as Options2, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AgentStatusData, AgentStatusResponses, AnswerRunData, AnswerRunErrors, AnswerRunResponses, AssetFileData, AssetFileErrors, AssetFileResponses, BrandsData, BrandsResponses, BrowseImagesData, BrowseImagesErrors, BrowseImagesResponses, CancelRunData, CancelRunErrors, CancelRunResponses, ConversationsData, ConversationsResponses, CreateBrandData, CreateBrandErrors, CreateBrandResponses, CreateConversationData, CreateConversationErrors, CreateConversationResponses, CreateRunData, CreateRunErrors, CreateRunResponses, EventsData, EventsErrors, EventsResponses, FilterOptionsData, FilterOptionsErrors, FilterOptionsResponses, ImageDetailData, ImageDetailErrors, ImageDetailResponses, ImageFileData, ImageFileErrors, ImageFileResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, ReadConversationData, ReadConversationErrors, ReadConversationResponses, ReadRunData, ReadRunErrors, ReadRunResponses, RunsData, RunsResponses, SearchImageData, SearchImageErrors, SearchImageResponses, SearchTextData, SearchTextErrors, SearchTextResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SimilarImagesData, SimilarImagesErrors, SimilarImagesResponses, StatusData, StatusErrors, StatusResponses, UploadData, UploadErrors, UploadResponses, VersionBrandData, VersionBrandErrors, VersionBrandResponses } from './types.gen';
+import type { AgentStatusData, AgentStatusResponses, AnswerRunData, AnswerRunErrors, AnswerRunResponses, AssetFileData, AssetFileErrors, AssetFileResponses, BrandsData, BrandsResponses, BrowseImagesData, BrowseImagesErrors, BrowseImagesResponses, CancelRunData, CancelRunErrors, CancelRunResponses, ConversationsData, ConversationsResponses, CreateBrandData, CreateBrandErrors, CreateBrandResponses, CreateConversationData, CreateConversationErrors, CreateConversationResponses, CreateRunData, CreateRunErrors, CreateRunResponses, EventsData, EventsErrors, EventsResponses, ExplorerCallbackData, ExplorerCancelData, ExplorerCancelErrors, ExplorerCancelResponses, ExplorerConversationsData, ExplorerConversationsResponses, ExplorerCreateData, ExplorerCreateErrors, ExplorerCreateResponses, ExplorerEventsData, ExplorerEventsErrors, ExplorerEventsResponse, ExplorerEventsResponses, ExplorerHistoryData, ExplorerHistoryErrors, ExplorerHistoryResponses, ExplorerLoginData, ExplorerLogoutData, ExplorerLogoutResponses, ExplorerStatusData, ExplorerStatusResponses, ExplorerSubmitData, ExplorerSubmitErrors, ExplorerSubmitResponses, ExplorerUploadData, ExplorerUploadErrors, ExplorerUploadResponses, FilterOptionsData, FilterOptionsErrors, FilterOptionsResponses, ImageDetailData, ImageDetailErrors, ImageDetailResponses, ImageFileData, ImageFileErrors, ImageFileResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, ReadConversationData, ReadConversationErrors, ReadConversationResponses, ReadRunData, ReadRunErrors, ReadRunResponses, RunsData, RunsResponses, SearchImageData, SearchImageErrors, SearchImageResponses, SearchTextData, SearchTextErrors, SearchTextResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SimilarImagesData, SimilarImagesErrors, SimilarImagesResponses, StatusData, StatusErrors, StatusResponses, UploadData, UploadErrors, UploadResponses, VersionBrandData, VersionBrandErrors, VersionBrandResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -223,6 +223,83 @@ export const sendMessage = <ThrowOnError extends boolean = false>(options: Optio
     ...options,
     headers: {
         'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Explorer Status
+ */
+export const explorerStatus = <ThrowOnError extends boolean = false>(options?: Options<ExplorerStatusData, ThrowOnError>) => (options?.client ?? client).get<ExplorerStatusResponses, unknown, ThrowOnError>({ url: '/api/v1/explorer/status', ...options });
+
+/**
+ * Explorer Login
+ */
+export const explorerLogin = <ThrowOnError extends boolean = false>(options?: Options<ExplorerLoginData, ThrowOnError>) => (options?.client ?? client).get<unknown, unknown, ThrowOnError>({ url: '/api/v1/explorer/auth/login', ...options });
+
+/**
+ * Explorer Callback
+ */
+export const explorerCallback = <ThrowOnError extends boolean = false>(options?: Options<ExplorerCallbackData, ThrowOnError>) => (options?.client ?? client).get<unknown, unknown, ThrowOnError>({ url: '/api/v1/explorer/auth/callback', ...options });
+
+/**
+ * Explorer Logout
+ */
+export const explorerLogout = <ThrowOnError extends boolean = false>(options?: Options<ExplorerLogoutData, ThrowOnError>) => (options?.client ?? client).post<ExplorerLogoutResponses, unknown, ThrowOnError>({ url: '/api/v1/explorer/auth/logout', ...options });
+
+/**
+ * Explorer Conversations
+ */
+export const explorerConversations = <ThrowOnError extends boolean = false>(options?: Options<ExplorerConversationsData, ThrowOnError>) => (options?.client ?? client).get<ExplorerConversationsResponses, unknown, ThrowOnError>({ url: '/api/v1/explorer/conversations', ...options });
+
+/**
+ * Explorer Create
+ */
+export const explorerCreate = <ThrowOnError extends boolean = false>(options: Options<ExplorerCreateData, ThrowOnError>) => (options.client ?? client).post<ExplorerCreateResponses, ExplorerCreateErrors, ThrowOnError>({
+    url: '/api/v1/explorer/conversations',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Explorer History
+ */
+export const explorerHistory = <ThrowOnError extends boolean = false>(options: Options<ExplorerHistoryData, ThrowOnError>) => (options.client ?? client).get<ExplorerHistoryResponses, ExplorerHistoryErrors, ThrowOnError>({ url: '/api/v1/explorer/conversations/{conversation_id}', ...options });
+
+/**
+ * Explorer Submit
+ */
+export const explorerSubmit = <ThrowOnError extends boolean = false>(options: Options<ExplorerSubmitData, ThrowOnError>) => (options.client ?? client).post<ExplorerSubmitResponses, ExplorerSubmitErrors, ThrowOnError>({
+    url: '/api/v1/explorer/conversations/{conversation_id}/messages',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Explorer Cancel
+ */
+export const explorerCancel = <ThrowOnError extends boolean = false>(options: Options<ExplorerCancelData, ThrowOnError>) => (options.client ?? client).post<ExplorerCancelResponses, ExplorerCancelErrors, ThrowOnError>({ url: '/api/v1/explorer/runs/{run_id}/cancel', ...options });
+
+/**
+ * Explorer Events
+ */
+export const explorerEvents = <ThrowOnError extends boolean = false>(options: Options<ExplorerEventsData, ThrowOnError, ExplorerEventsResponse>) => (options.client ?? client).sse.get<ExplorerEventsResponses, ExplorerEventsErrors, ThrowOnError>({ url: '/api/v1/explorer/runs/{run_id}/events', ...options });
+
+/**
+ * Explorer Upload
+ */
+export const explorerUpload = <ThrowOnError extends boolean = false>(options: Options<ExplorerUploadData, ThrowOnError>) => (options.client ?? client).post<ExplorerUploadResponses, ExplorerUploadErrors, ThrowOnError>({
+    ...formDataBodySerializer,
+    url: '/api/v1/explorer/uploads',
+    ...options,
+    headers: {
+        'Content-Type': null,
         ...options.headers
     }
 });

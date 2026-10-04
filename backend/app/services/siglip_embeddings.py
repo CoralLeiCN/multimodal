@@ -9,6 +9,7 @@ import logfire
 from PIL import Image, ImageOps
 
 from app.core.config import Settings
+from app.services.deadline import check_deadline, deadline_lock
 from app.services.embeddings import SearchError, normalize
 
 
@@ -72,7 +73,7 @@ class SiglipEmbeddings:
         # One model and one bounded inference batch per process. Parallel API or
         # indexer calls cannot oversubscribe CPU memory with model forwards.
         with (
-            self._lock,
+            deadline_lock(self._lock),
             torch.inference_mode(),
             logfire.span(
                 "siglip.embed",
@@ -84,6 +85,7 @@ class SiglipEmbeddings:
             ),
         ):
             self._load()
+            check_deadline()
             try:
                 if text is not None:
                     inputs = self._processor(

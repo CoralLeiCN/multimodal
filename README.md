@@ -18,6 +18,10 @@ frontend. SigLIP 2 Base runs on CPU to embed text and images. PostgreSQL stores 
 catalogue and ingestion state, and Qdrant stores vectors. Local SQLite caches
 embeddings between indexing runs. Search requires no model API key and has no
 daily quota.
+Search execution is limited to 30 seconds and four concurrent jobs per API.
+Initial index verification streams catalogue rows and vector batches in a shared
+background job. Browsing is available while verification runs, and search timeouts
+do not restart its progress.
 
 The first release is a public Hugging Face Docker Space for dataset exploration.
 It includes only search features. A separate web edition adds

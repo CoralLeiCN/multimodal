@@ -24,6 +24,7 @@ COMMON = (
     "api/routes/status.py",
     "services/__init__.py",
     "services/embeddings.py",
+    "services/deadline.py",
     "services/siglip_embeddings.py",
     "services/search.py",
     "services/catalogue.py",

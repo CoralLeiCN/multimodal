@@ -10,8 +10,8 @@ acceptance. Detailed commands are in the [backend](../backend/README.md) and
 ## User experience
 
 The home page shows a search field, an image upload control, and a grid of indexed
-images. Display the number of searchable images and identify the collection as a
-sample when a sample index is active.
+images. Display the indexed image count and prefix it with “Sample” when the status
+response has `sample=true`. Keep that disclosure visible while search is being checked.
 
 Support these actions:
 
@@ -91,6 +91,9 @@ settings in `core/config.py`. Keep routes thin: service modules implement
 selection, embedding, ingestion, and search. The cronjob entry point calls the
 same ingestion service. Generate `frontend/src/client/` from the API schema and
 regenerate it whenever an endpoint contract changes.
+The development schema combines public search, web companion and Studio routes.
+Companion JSON responses use Pydantic models and the generated TypeScript client;
+private collection-tool routes are excluded from the public schema.
 
 ## Architecture
 
@@ -409,9 +412,22 @@ API processes. Repair image selection or embedding changes in a new generation
 using checkpointed vectors. Filter metadata can be refreshed during maintenance
 with the API stopped, as described below.
 
-At startup, validate the active collection's configuration and reconcile its
-expected point IDs in bounded batches before enabling search. Report an unusable
-collection as unavailable. Browse and metadata endpoints can still use the catalogue.
+On the first status or vector-search request, validate the active collection's
+configuration and reconcile its expected point IDs before enabling search.
+Stream catalogue rows in pages of at most 500 and verify at most 64 vectors per
+batch. Run one shared background verification job per API, independent of any
+search request's deadline. A waiting search can time out without cancelling or
+restarting that job. After the catalogue read, status waits at most 100 ms for
+vector checks; initial verification still in progress returns `checking`, the
+generation and indexed image count, with search disabled. Browsing and filters
+remain available. Once verified, subsequent checks validate collection configuration
+and point count. Status can use the last successful check while a new check runs.
+Any check failure clears cached verification and reports the collection as
+unavailable; matching the point count again is insufficient without full verification.
+Generation changes and shutdown cancel old verification between batches. Drain
+verification and search jobs before closing shared clients. While an older
+generation's job is draining, vector requests return `503` with `index_verifying`;
+a later request starts verification for the new generation.
 `--resume <run_id>` verifies ready generations and repairs interrupted generations
 from the cache. Back up the catalogue database and Qdrant storage with their generation
 mapping, and validate that mapping after restoration.
@@ -556,6 +572,15 @@ Use a consistent error body with `code` and a safe, actionable `message`:
 | `503` | No usable index, incompatible configuration, or unavailable embedding provider or Qdrant service. |
 | `504` | Search exceeds the 30-second request deadline. |
 
+The 30-second execution deadline covers catalogue reads, waiting for shared index
+verification, embedding, vector retrieval and result metadata. Verification itself
+continues independently after the waiting request expires. Return `search_timeout`
+when the request deadline expires. Stop subsequent processing at deadline checkpoints,
+including waits for verification and the embedding lock. An in-progress native
+model or I/O call can finish after
+the response; it retains its slot until it exits. Allow at most four search jobs
+per API and drain them before closing shared clients during shutdown.
+
 Browsing uses the catalogue and the image mount. “Find similar” uses Qdrant and continues to
 work when the embedding model is unavailable. Qdrant failure makes vector search unavailable
 while browsing remains usable. Search failure must be shown as an error. Serve
@@ -606,7 +631,7 @@ Configuration defaults:
 | `EMBEDDING_MODEL_CACHE` | `data/models/` |
 | `EMBEDDING_CPU_THREADS` | `2` |
 | `EMBEDDING_BATCH_SIZE` | `8` |
-| Selected image limit | `50` |
+| Selected image limit | Explicit `--limit`; `make preview-index` supplies `50`. Omission during indexing reuses the saved selection. |
 | Source scan limit | `1000` |
 | Search data directory | `data/search/` |
 | `DATABASE_URL` | Required PostgreSQL catalogue URL |

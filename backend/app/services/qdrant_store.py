@@ -1,9 +1,13 @@
+from collections.abc import Iterable
+from itertools import batched
+
 import logfire
 from qdrant_client import QdrantClient, models
 
 from app.core.config import Settings
 from app.models import Generation, Image
 from app.schemas import MetadataFilters
+from app.services.deadline import check_deadline
 from app.services.embeddings import SearchError, normalize
 from app.services.metadata import PAYLOAD_INDEXES, PAYLOAD_SCHEMA_VERSION, qdrant_filter
 
@@ -152,14 +156,19 @@ class VectorStore:
         return normalize(points[0].vector, generation.dimensions)
 
     @logfire.instrument("qdrant.verify", extract_args=False)
-    def verify(self, generation: Generation, images: list[Image]) -> None:
+    def verify(self, generation: Generation, images: Iterable[Image]) -> None:
+        check_deadline()
         self.check_collection(generation)
-        if self.client.count(generation.collection, exact=True).count != len(images):
+        if (
+            self.client.count(generation.collection, exact=True).count
+            != generation.count
+        ):
             raise SearchError(
                 "The catalogue and vector counts do not match.", "index_inconsistent"
             )
-        for offset in range(0, len(images), 64):
-            batch = images[offset : offset + 64]
+        checked = 0
+        for batch in batched(images, 64):
+            check_deadline()
             points = {
                 str(point.id): point
                 for point in self.client.retrieve(
@@ -178,6 +187,12 @@ class VectorStore:
                         "index_inconsistent",
                     )
                 normalize(point.vector, generation.dimensions)
+            checked += len(batch)
+        check_deadline()
+        if checked != generation.count:
+            raise SearchError(
+                "The catalogue and vector counts do not match.", "index_inconsistent"
+            )
 
     def close(self):
         self.client.close()

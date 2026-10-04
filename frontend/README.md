@@ -60,7 +60,9 @@ needed to verify search relevance against the configured embedding model and the
 ## Search interface
 
 The homepage introduces multimodal search across Science Museum Group datasets
-and displays the total indexed image count. Collection Explorer is an independent
+and displays the total indexed image count, prefixed with “Sample” when the API
+marks the index as a sample. Browsing and filters can load while status reports
+that search verification is still running. Collection Explorer is an independent
 project with no affiliation to the Science Museum Group.
 
 The text search field randomly starts with “a brass microscope” or “an early
@@ -164,6 +166,12 @@ other than 8000. For example:
 APP_EDITION=web PLAYWRIGHT_BASE_URL=http://127.0.0.1:8000 bun run test
 ```
 
-The generated client remains the shared search/Studio contract in `openapi.json`;
-the companion owns its typed request and event adapter. Schema generation is a
-development command using the `agent` extra and does not affect release artifacts.
+The generated client covers public search, companion and Studio contracts in
+`openapi.json`. Companion JSON responses are validated by Pydantic and consumed
+through generated request functions and types; SSE uses the browser's EventSource.
+Schema generation is a development command using the `agent` and `web` extras.
+Each deployed edition retains its own route set. Private collection-tool routes
+are excluded from the public schema.
+
+Companion result cards include each source association's credit, copyright notice,
+source link and linked licence, using the same licence renderer as image details.

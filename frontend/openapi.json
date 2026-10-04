@@ -1655,6 +1655,368 @@
           }
         }
       }
+    },
+    "/api/v1/explorer/status": {
+      "get": {
+        "tags": [
+          "explorer"
+        ],
+        "summary": "Explorer Status",
+        "operationId": "explorer_status",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExplorerStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/explorer/auth/login": {
+      "get": {
+        "tags": [
+          "explorer"
+        ],
+        "summary": "Explorer Login",
+        "operationId": "explorer_login",
+        "responses": {
+          "307": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/v1/explorer/auth/callback": {
+      "get": {
+        "tags": [
+          "explorer"
+        ],
+        "summary": "Explorer Callback",
+        "operationId": "explorer_callback",
+        "responses": {
+          "303": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/v1/explorer/auth/logout": {
+      "post": {
+        "tags": [
+          "explorer"
+        ],
+        "summary": "Explorer Logout",
+        "operationId": "explorer_logout",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExplorerLogout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/explorer/conversations": {
+      "get": {
+        "tags": [
+          "explorer"
+        ],
+        "summary": "Explorer Conversations",
+        "operationId": "explorer_conversations",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExplorerConversation"
+                  },
+                  "type": "array",
+                  "title": "Response Explorer Conversations"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "explorer"
+        ],
+        "summary": "Explorer Create",
+        "operationId": "explorer_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewConversation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExplorerConversation"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/explorer/conversations/{conversation_id}": {
+      "get": {
+        "tags": [
+          "explorer"
+        ],
+        "summary": "Explorer History",
+        "operationId": "explorer_history",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExplorerHistory"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/explorer/conversations/{conversation_id}/messages": {
+      "post": {
+        "tags": [
+          "explorer"
+        ],
+        "summary": "Explorer Submit",
+        "operationId": "explorer_submit",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Message"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExplorerRun"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/explorer/runs/{run_id}/cancel": {
+      "post": {
+        "tags": [
+          "explorer"
+        ],
+        "summary": "Explorer Cancel",
+        "operationId": "explorer_cancel",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExplorerCancellation"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/explorer/runs/{run_id}/events": {
+      "get": {
+        "tags": [
+          "explorer"
+        ],
+        "summary": "Explorer Events",
+        "operationId": "explorer_events",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/explorer/uploads": {
+      "post": {
+        "tags": [
+          "explorer"
+        ],
+        "summary": "Explorer Upload",
+        "operationId": "explorer_upload",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_explorer_upload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExplorerUpload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1760,6 +2122,20 @@
           "source_url"
         ],
         "title": "AssociationRead"
+      },
+      "Body_explorer_upload": {
+        "properties": {
+          "image": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Image"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image"
+        ],
+        "title": "Body_explorer_upload"
       },
       "Body_search_image": {
         "properties": {
@@ -2007,6 +2383,246 @@
         ],
         "title": "ErrorResponse"
       },
+      "ExplorerCancellation": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "cancelled",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "ExplorerCancellation"
+      },
+      "ExplorerConversation": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "ExplorerConversation"
+      },
+      "ExplorerHistory": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/ExplorerRun"
+            },
+            "type": "array",
+            "title": "Runs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "runs"
+        ],
+        "title": "ExplorerHistory"
+      },
+      "ExplorerImage": {
+        "properties": {
+          "image_id": {
+            "type": "string",
+            "title": "Image Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "image_url": {
+            "type": "string",
+            "title": "Image Url"
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          },
+          "associations": {
+            "items": {
+              "$ref": "#/components/schemas/AssociationRead"
+            },
+            "type": "array",
+            "title": "Associations"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "index_version": {
+            "type": "string",
+            "title": "Index Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image_id",
+          "title",
+          "image_url",
+          "width",
+          "height",
+          "associations",
+          "index_version"
+        ],
+        "title": "ExplorerImage"
+      },
+      "ExplorerLogout": {
+        "properties": {
+          "signed_out": {
+            "type": "boolean",
+            "title": "Signed Out"
+          }
+        },
+        "type": "object",
+        "required": [
+          "signed_out"
+        ],
+        "title": "ExplorerLogout"
+      },
+      "ExplorerRun": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "upload_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upload Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "timed_out"
+            ],
+            "title": "Status"
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ExplorerImage"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "usage": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Usage"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "content",
+          "upload_id",
+          "status",
+          "answer",
+          "results",
+          "error",
+          "usage"
+        ],
+        "title": "ExplorerRun"
+      },
+      "ExplorerStatus": {
+        "properties": {
+          "authenticated": {
+            "type": "boolean",
+            "title": "Authenticated"
+          },
+          "ready": {
+            "type": "boolean",
+            "title": "Ready"
+          },
+          "auth_ready": {
+            "type": "boolean",
+            "title": "Auth Ready"
+          }
+        },
+        "type": "object",
+        "required": [
+          "authenticated",
+          "ready",
+          "auth_ready"
+        ],
+        "title": "ExplorerStatus"
+      },
+      "ExplorerUpload": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "ExplorerUpload"
+      },
       "FilterOptions": {
         "properties": {
           "index_version": {
@@ -2138,6 +2754,34 @@
         ],
         "title": "Login"
       },
+      "Message": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "maxLength": 6000,
+            "minLength": 1,
+            "title": "Content"
+          },
+          "upload_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{32}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upload Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "Message"
+      },
       "MessageInput": {
         "properties": {
           "content": {
@@ -2219,6 +2863,20 @@
         "additionalProperties": false,
         "type": "object",
         "title": "MetadataFilters"
+      },
+      "NewConversation": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "default": "Collection exploration"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "NewConversation"
       },
       "RunInput": {
         "properties": {

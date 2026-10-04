@@ -111,8 +111,9 @@ and an API restart. Use a separate Qdrant collection for a new embedding
 configuration; vectors from different models cannot be combined. The model
 revision and preprocessing contract participate in the cache/index fingerprint.
 
-The API pins a ready index once it becomes available. Restart the API after
-publishing a replacement index. The frontend build is served at `/` when
+The API reads the active catalogue generation on requests and invalidates vector
+verification when its completion changes. Stop both editions during publication
+and restart them afterward. The frontend build is served at `/` when
 `frontend/dist/search/` exists at backend startup.
 
 | Endpoint | Purpose |
@@ -174,6 +175,19 @@ Interactive API documentation is at `http://127.0.0.1:8000/docs`; the schema is
 at `/api/v1/openapi.json`. JSON errors include `code` and `message`. Images are
 limited to JPEG or PNG, 10 MiB, and 20 million pixels. Empty indexes and unavailable
 models return `503`; exhausted concurrent search capacity returns `429`.
+Search execution has a 30-second deadline and returns `504` with `search_timeout`
+on expiry. At most four search jobs run per API. A native model or I/O call that
+outlives its response retains its slot until it finishes; expired work skips later
+stages. Shutdown drains these jobs before closing the model, catalogue and Qdrant.
+Initial verification streams catalogue pages and vector batches in one shared
+background job per API. It continues after a waiting search times out.
+Status waits at most 100 ms for vector checks after reading the catalogue and
+returns `checking` with the image count while initial verification runs, so browsing
+remains available. Later checks validate collection configuration and count; a
+failure clears readiness and requires full verification before search resumes.
+Shutdown cancels verification between batches and drains it before closing clients.
+If a previous generation's job is still draining, vector requests return `503`
+with `index_verifying` and can be retried shortly.
 The API limits mutation request bodies before parsing: 256 KiB for JSON and
 the configured image byte limit plus 1 MiB for multipart uploads. The default
 multipart limit is 11 MiB. Oversized requests return `413` with `body_too_large`,

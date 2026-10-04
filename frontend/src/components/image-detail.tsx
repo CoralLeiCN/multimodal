@@ -2,17 +2,8 @@ import * as Dialog from "@radix-ui/react-dialog"
 import { ArrowUpRight, Copy, MessageCircle, ScanSearch, X } from "lucide-react"
 import { useRef, useState } from "react"
 import type { ImageRead } from "../client/api"
+import { Licence } from "./licence"
 import { Button } from "./ui/button"
-
-const licenceLinks: Record<string, string> = {
-  "CC BY-NC-SA 4.0": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
-  "CC-BY-NC-SA 4.0": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
-  "CC BY-NC-ND 4.0": "https://creativecommons.org/licenses/by-nc-nd/4.0/",
-  "CC BY 4.0": "https://creativecommons.org/licenses/by/4.0/",
-  CC0: "https://creativecommons.org/publicdomain/zero/1.0/",
-  "Open Government Licence v3.0":
-    "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
-}
 
 export function ImageDetail({
   image,
@@ -130,13 +121,7 @@ export function ImageDetail({
                       <div>
                         <dt>Licence</dt>
                         <dd>
-                          {licenceLinks[item.licence] ? (
-                            <a href={licenceLinks[item.licence]} target="_blank" rel="noreferrer">
-                              {item.licence}
-                            </a>
-                          ) : (
-                            item.licence || "Not supplied"
-                          )}
+                          <Licence value={item.licence} />
                         </dd>
                       </div>
                     </dl>
