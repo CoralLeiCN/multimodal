@@ -10,7 +10,7 @@ from threading import Event, Lock
 from uuid import uuid4
 
 import logfire
-from sqlalchemy import case, delete, func
+from sqlalchemy import delete, func
 from sqlalchemy.dialects.postgresql import insert
 from sqlmodel import Session, select
 
@@ -27,20 +27,15 @@ from app.models import (
 )
 from app.services.embeddings import SearchError, normalize
 from app.services.metadata import filter_rows
-from app.services.r2_catalogue import r2_object_url
 from app.services.selection import safe_path
 
-# Bound SQL parameter counts independently of the paid embedding request size.
+# Bound SQL parameter counts independently of embedding batch sizes.
 CATALOGUE_BATCH_SIZE = 500
 
 
-def image_values(settings, item):
-    values = {
-        key: item[key] for key in Image.model_fields if key in item and key != "r2_url"
-    }
+def image_values(item):
+    values = {key: item[key] for key in Image.model_fields if key in item}
     values["filter_metadata"] = filter_rows(item["associations"])
-    if settings.r2_endpoint_url:
-        values["r2_url"] = r2_object_url(settings, item["relative_path"])
     return values
 
 
@@ -144,9 +139,7 @@ def _save_catalogue_batches(session, settings, generation, selected, progress):
     completed = 0
     for batch in batched(selected, CATALOGUE_BATCH_SIZE):
         images = [
-            Image(
-                generation_id=generation.id, **image_values(settings, item)
-            ).model_dump()
+            Image(generation_id=generation.id, **image_values(item)).model_dump()
             for item in batch
         ]
         statement = insert(Image.__table__).values(images)
@@ -155,16 +148,6 @@ def _save_catalogue_batches(session, settings, generation, selected, progress):
             for name in Image.model_fields
             if name not in {"generation_id", "image_id"}
         }
-        if not settings.r2_endpoint_url:
-            # Keep a previously verified URL only for unchanged local content.
-            updates["r2_url"] = case(
-                (
-                    (Image.relative_path == statement.excluded.relative_path)
-                    & (Image.checksum == statement.excluded.checksum),
-                    Image.r2_url,
-                ),
-                else_=None,
-            )
         connection.execute(
             statement.on_conflict_do_update(
                 index_elements=["generation_id", "image_id"], set_=updates
@@ -388,7 +371,7 @@ def _ingest_batch(
                     )
                     if len(batch_vectors) != len(payloads):
                         raise SearchError(
-                            "Gemini returned an unexpected number of embeddings.",
+                            "The model returned an unexpected number of embeddings.",
                             "invalid_embedding",
                         )
                     # Validate the whole response before pairing or caching any vector.
@@ -502,7 +485,6 @@ def _record_failure(engine, generation_id, images, error, attempt):
 
 def _permanent_error(error):
     return isinstance(error, SearchError) and error.code in {
-        "missing_api_key",
         "embedding_configuration",
         "source_changed",
         "invalid_embedding",
@@ -539,17 +521,6 @@ def run_ingestion(
             .where(Image.generation_id == generation_id)
             .order_by(Image.image_id)
         ).all()
-        urls_changed = False
-        if settings.r2_endpoint_url:
-            for image in images:
-                url = r2_object_url(settings, image.relative_path)
-                if image.r2_url != url:
-                    image.r2_url = url
-                    session.add(image)
-                    urls_changed = True
-            if urls_changed:
-                session.commit()
-                save_selection(engine, settings, generation_id)
         if generation.status == "ready":
             vectors.verify(generation, images)
             return {

@@ -1,18 +1,11 @@
 # Multimodal image search service
 
-Status: the core prototype is implemented. See the [backend guide](../backend/README.md)
-and [frontend guide](../frontend/README.md) for the current run commands. The initial
-workflow selects 50 images and tracks each image through the SQL catalogue into Qdrant.
-
-The [user feature document](user_features.md) describes what we want to build.
-This specification covers the current image search service. Use the root [Makefile](../Makefile) and
-[local run guide](../README.md#run-locally) to operate the prototype.
-
-Build a web application for searching the Science Museum Group images already
-stored under `data/images/`. A user enters a description or supplies an image
-and receives matching collection images. Start with a bounded sample, persist
-its embeddings, and expand the searchable collection through explicit indexing
-runs.
+This specification defines the implemented search service: text and image
+retrieval, metadata filtering, catalogue ingestion, and Qdrant publication. The
+[local run guide](../README.md#run-locally) covers startup, and the
+[deployment guide](huggingface_spaces.md) tracks the 100-image preview and hosted
+acceptance. Detailed commands are in the [backend](../backend/README.md) and
+[indexing](../cronjob/README.md) guides.
 
 ## User experience
 
@@ -31,9 +24,9 @@ Support these actions:
 - Filter browsing and every search by creation year range, creation place, and category.
 - Open an image detail panel with its title, description, source identifiers,
   date, place, category, maker, and supplied licence and attribution information.
-- Copy a supplied collection ID from image details, or open chat with that ID
-  replacing the draft and focus in the composer. This closes image details and
-  keeps chat history without sending a message. Omit both actions for missing IDs.
+- Copy a supplied collection ID from image details. When the agent is enabled,
+  a separate chat action closes details and opens the composer with that ID as
+  its draft, preserving history without sending. Omit these actions for missing IDs.
 
 Return 24 results by default, with a maximum of 100 per search. Browse the sample
 in pages of 24 images. Use responsive cards, lazy image loading, labelled controls,
@@ -48,15 +41,16 @@ disable the apply button and show a correction message.
 Provide clear states for an empty index, unavailable search, invalid uploads,
 missing images, and zero results. Keep model names, vector dimensions, and local
 filesystem paths in operator diagnostics. The user interface should explain that
-uploaded query images are sent to Google to generate embeddings, which the app
-uses to find similar collection images. Uploaded images are not added to the collection.
+uploaded query images are processed on the server to find similar collection
+images; uploaded images are not added to the collection. Status reports
+`embedding_provider=local` when the index is ready. SigLIP 2 is the only supported
+search model; Gemini embedding configuration is rejected.
 
 ## Technology stack and project layout
 
-Use the [Full Stack FastAPI Template](https://github.com/fastapi/full-stack-fastapi-template)
-as the layout and integration reference. Record the upstream commit used when
-scaffolding. Adapt its database configuration to Neon PostgreSQL and add Qdrant to
-the Compose services.
+The layout follows the
+[Full Stack FastAPI Template](https://github.com/fastapi/full-stack-fastapi-template),
+with PostgreSQL for the catalogue and Qdrant for vectors.
 
 | Layer | Technology | Project responsibility |
 | --- | --- | --- |
@@ -67,79 +61,30 @@ the Compose services.
 | API client | `@hey-api/openapi-ts` | Generate the frontend client from FastAPI's OpenAPI schema. |
 | Catalogue database | Neon PostgreSQL, SQLModel, Alembic | Catalogue, ingestion status, retries, checkpoints, and schema migrations. |
 | Vector database | Qdrant and `qdrant-client` | Persistent image vectors and cosine similarity queries. |
-| Embeddings | Gemini Embedding 2 and `google-genai` | Image and text embeddings in a shared space. |
+| Embeddings | SigLIP 2 Base, PyTorch, and Transformers | Local CPU text and image embeddings in a shared 768-dimensional space. |
 | Tracing | Pydantic Logfire and the `logfire[fastapi]` Python SDK | Trace API requests, AI calls, ingestion, and database operations. |
 | Image validation | Pillow | Decode files and validate formats and dimensions. |
-| Local services | Docker Compose | Run Qdrant and the application with persistent local storage. |
+| Local services | Docker Compose | Run Qdrant with persistent local storage. |
+| Application container | Root Dockerfile | Build React and serve it with FastAPI on port 7860; Hugging Face deployment gaps are tracked separately. |
 | Dependency management | uv and Bun | Python workspace and frontend dependencies with committed lockfiles. |
 | Validation tools | pytest, Ruff, TypeScript, Biome, Playwright | Backend checks, frontend checks, and browser workflows. |
 
-Follow the template's [backend conventions](https://github.com/fastapi/full-stack-fastapi-template/blob/master/backend/README.md)
-and [frontend conventions](https://github.com/fastapi/full-stack-fastapi-template/blob/master/frontend/README.md).
-The proposed project layout is:
+The uv workspace shares `uv.lock` and `.venv`. The `multimodal-backend` package
+exports `app`; the root Python project owns data preparation dependencies. Bun
+manages the frontend workspace and `bun.lock`.
 
-```text
-backend/
-  app/
-    main.py
-    core/
-      config.py
-      db.py
-    api/
-      main.py
-      deps.py
-      routes/
-        images.py
-        search.py
-        status.py
-    models.py
-    schemas.py
-    crud.py
-    services/
-      selection.py
-      embeddings.py
-      ingestion.py
-      qdrant_store.py
-      search.py
-    alembic/versions/
-  tests/
-  scripts/
-  alembic.ini
-  pyproject.toml
-  Dockerfile
-frontend/
-  src/
-    client/
-    components/
-    hooks/
-    lib/
-    routes/
-  public/
-  tests/
-  package.json
-  vite.config.ts
-cronjob/
-  index_images.py
-  match_images.py
-  silver_to_gold.py
-scripts/
-  generate-client.sh
-docs/
-data/
-compose.yml
-compose.override.yml
-pyproject.toml
-uv.lock
-package.json
-bun.lock
-```
-
-Add `backend` as a uv workspace member named `multimodal-backend`, exporting the
-`app` Python package. The root Python project continues to own the existing data
-scripts and their dependencies. Use a shared root `uv.lock` and `.venv`. Declare
-backend dependencies in `backend/pyproject.toml` and select versions compatible
-with this repository's Python requirement. Use the template's Bun workspace
-convention for `frontend`.
+| Location | Responsibility |
+| --- | --- |
+| `backend/app/api/` | HTTP routes and request dependencies. |
+| `backend/app/core/` | Settings, database connections, tracing, and request limits. |
+| `backend/app/services/` | Selection, embeddings, indexing, metadata, image delivery, and search. |
+| `backend/app/alembic/` | Catalogue schema migrations. |
+| `backend/tests/` | Backend and ingestion tests. |
+| `frontend/src/` | Routes, components, and generated API client. |
+| `cronjob/` | Data preparation and indexing entry points. |
+| `scripts/` | Client generation and maintenance utilities. |
+| `deploy/` | Docker preview fixtures for the HF Space. |
+| `data/` | Ignored source data, images, caches, and generated reports. |
 
 Put catalogue table models in `models.py`, Pydantic API schemas in `schemas.py`, and
 settings in `core/config.py`. Keep routes thin: service modules implement
@@ -157,7 +102,7 @@ Qdrant collection. The separate indexing command updates both stores.
 ```mermaid
 flowchart LR
     D[Local images and metadata] --> I[Bounded indexing command]
-    I --> G[Gemini embedding API]
+    I --> G[Local SigLIP 2 model]
     G --> I
     I --> S[SQL catalogue and ingestion tracking]
     I --> Q[Qdrant vectors]
@@ -167,13 +112,22 @@ flowchart LR
     A --> Q
     A --> M[Indexed image endpoint]
     M --> D
-    M --> R[R2 signed image delivery]
+    M --> H[Read-only HF bucket mount]
 ```
 
 At startup, the API reads the active index version and its Qdrant collection name
-from the SQL catalogue. It serves local image bytes first, falling back to signed
-R2 URLs for missing files when configured, and keeps using that
-generation until restarted. Indexing builds a new generation independently.
+from the SQL catalogue. It serves image bytes from `IMAGE_ROOT`, the HF bucket
+mount in the hosted app or a local directory during development. Indexing builds a new generation independently.
+
+The HF and web editions share that catalogue, Qdrant collection and image release.
+Both use `SearchService`; Codex collection tools call the web instance of that
+service. Search requests never publish vectors or create a separate agent index.
+An explicitly configured `QDRANT_COLLECTION_NAME` must match the active catalogue;
+otherwise status reports unavailable and vector searches return `index_mismatch`
+before embedding the query. The model/revision/dimensions must also match the
+published generation. Metadata browsing remains available during these
+configuration errors. The [shared retrieval contract](product_versions.md#shared-retrieval-contract)
+defines the deployment settings.
 
 Use Vite during frontend development, with `/api/v1` proxied to FastAPI. Serve the
 built React frontend through FastAPI for the local packaged application, following
@@ -198,10 +152,8 @@ Maintain a bounded sample using a stable hash of the image location and seed 42
 while streaming metadata. Decode only the selected candidates after the scan.
 Failed embedding requests do not cause the selection to grow.
 
-The existing optional manifest is
-`data/processed/image_manifest.csv`. A future manifest input can stream eligible
-rows with `status=matched`. The implemented sampler reads bronze metadata directly
-and defaults to the object export.
+The sampler reads bronze metadata directly and defaults to the object export.
+`data/processed/image_manifest.csv` is an optional audit output.
 
 For bronze selection, reuse the streaming record parser and metadata conventions
 in [the matching script](../cronjob/match_images.py). Resolve each medium thumbnail
@@ -224,7 +176,7 @@ empty strings and original licence spelling.
 Save the selected catalogue in SQL batches of up to 500 images, with association
 inserts capped at 500 rows per statement. Keep all batches in one transaction so
 a preparation failure cannot publish a partial selection. Report batch progress
-and confirm the commit before embedding. Gemini's request batch size is independent
+and confirm the commit before embedding. The embedding batch size is independent
 of these catalogue batches.
 
 Write a selection snapshot before embedding. Store it under `data/search/` with
@@ -241,70 +193,58 @@ the image paths and rights fields needed by the service.
 
 ## Embedding contract
 
-Use `gemini-embedding-2` through the existing `google-genai` dependency. Google
-documents shared text and image embeddings and supports 1536 output dimensions,
-which is the proposed default for this service.
-[Source: Gemini Embedding 2](https://ai.google.dev/gemini-api/docs/models/gemini-embedding-2).
+Use `google/siglip2-base-patch16-224` with PyTorch and Transformers on CPU.
+The model is Apache-2.0 licensed and supports text/image retrieval.
+[Model card](https://huggingface.co/google/siglip2-base-patch16-224).
+Pin revision `75de2d55ec2d0b4efc50b3e9ad70dba96a7b2fa2`, use safetensors,
+and disable remote model code. Cache downloaded files in `data/models/` by
+default; serving can run offline once the cache is prepared.
 
-Generate one image embedding per selected image. Display metadata is stored in
-the catalogue. Use the same model and dimension for query embeddings. Format text
-queries as `task: search result | query: {text}`. Send image queries as image
-content. For indexing batches, wrap each image in its own `Content` object and
-map the returned vectors to inputs in order. Multiple image parts inside one
-`Content` would combine their representation. JPEG and PNG are the initial
-supported formats.
-[Source: embedding inputs and task formatting](https://ai.google.dev/gemini-api/docs/embeddings).
+Generate one 768-dimensional vector per image. Use the same model and revision
+for text and uploaded-image queries. Apply EXIF orientation and convert to RGB,
+then use the pinned 224-pixel processor. Pass plain query text with maximum-length
+padding and truncation to 64 tokens. JPEG and PNG are the supported upload formats.
+The adapter runs inference without gradients, uses two CPU threads by default,
+and serializes loading and inference. Image batches are split into at most eight
+images per forward pass by default. No search query or image is sent to an
+external embedding API with this model.
 
-Illustrative indexing call:
+Require one vector per input, 768 finite values, and a nonzero norm. Normalize
+stored and query vectors to unit length. Use Qdrant cosine distance and descending
+score; scores express similarity, not probability. Break returned equal-score
+ties by image ID; candidates tied at the result limit can vary.
 
-```python
-from google import genai
-from google.genai import types
-
-with genai.Client() as client:
-    response = client.models.embed_content(
-        model="gemini-embedding-2",
-        contents=[
-            types.Content(parts=[
-                types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-            ])
-            for image_bytes, mime_type in images
-        ],
-        config=types.EmbedContentConfig(output_dimensionality=1536),
-    )
-    vectors = [embedding.values for embedding in response.embeddings]
-```
-
-`images` above contains validated image bytes and MIME types for one bounded
-request. Require exactly one returned vector per input image, each with the
-expected dimension, finite values, and a nonzero norm. Normalize stored and query vectors to unit length. Configure
-Qdrant with cosine distance and return its results by descending score. Order
-equal-score results returned by Qdrant by image ID; tied candidates at the result
-limit can vary. Scores express similarity and must not be labelled as probabilities.
-
-Record the model, dimension, preprocessing version, query format version, and
-creation time in each index generation. Query configuration must match the active
-generation; reject incompatible settings. A model or image preprocessing change
-requires a new index generation. Keep the provider call behind an embedding
-adapter so tests can supply deterministic vectors.
+The configuration fingerprint includes model, revision, dimensions, and the
+`siglip-rgb224-text64-v1` preprocessing contract. Query settings must match the
+active generation. Any model/revision/preprocessing change requires a new index.
+Use a separate Qdrant collection for a new embedding configuration and switch
+query and image embeddings together. Tests inject deterministic adapters without
+model downloads or external provider calls.
 
 ## SQL ingestion tracking and Qdrant storage
 
-`DATABASE_URL` is required for the shared Neon PostgreSQL catalogue. The application
-uses its pooled URL; migrations and the shared ingestion writer lock use
+`DATABASE_URL` is required for the shared Neon PostgreSQL catalogue. Native
+application traffic uses its pooled URL; migrations and the shared ingestion writer lock use
 `DATABASE_URL_UNPOOLED` (or the direct Neon hostname derived from `DATABASE_URL`).
+`CATALOGUE_TRANSPORT=postgres` is the default. HF search can use `neon_http`,
+which compiles the same SQLAlchemy catalogue SELECTs into parameterized Neon
+HTTPS requests on port 443. Its `DATABASE_URL` remains a PostgreSQL URL.
+HTTPS runs read-only query batches, with 10-second connect and 20-second read
+and pool timeouts, no redirects, and sanitized failures. Catalogue failures
+produce `catalogue_unavailable` (503); status reports `unavailable`. A migrated
+catalogue without a published generation remains `empty`. The web edition uses
+native PostgreSQL for durable conversations and the supervisor lock.
 Settings load `.env`, then `.env.local`, then process environment overrides.
 PostgreSQL filters use JSONB array predicates with the same record and date
 interval boundaries as Qdrant. Missing or non-PostgreSQL database configuration
 fails clearly; no local catalogue is created.
 
-Follow [Neon setup and import](neon_setup.md). The import requires schema `0003`,
-a ready active generation, matching embedding settings, and verified Qdrant
-points. Copy all catalogue tables into an empty target transactionally; reject
-nonempty targets and compare all row contents before committing. Keep the source.
+Follow [Neon collaboration](../backend/README.md#neon-collaboration) for connection setup.
 Indexing and metadata refresh acquire a shared PostgreSQL advisory lock on a
-dedicated direct session. Startup schema migrations serialize with a separate
-transaction advisory lock. The embedding cache remains local.
+dedicated direct session. Explicit schema migrations serialize with a separate
+transaction advisory lock.
+Search API startup does not run migrations; apply them with `make migrate` before
+starting or updating a deployment. The embedding cache remains local.
 
 Keep generated files beneath `SEARCH_DATA_DIR`, defaulting to the ignored
 `data/search/` directory:
@@ -318,10 +258,8 @@ data/search/
 ```
 
 Neon is the authoritative catalogue and ingestion ledger. SQLite is used only
-for the separate local embedding cache. Existing cache files are reused. For an
-older custom `SQLITE_PATH`, set `SEARCH_DATA_DIR` to its parent directory.
-The repository contains no catalogue database snapshot. The legacy importer
-accepts an existing schema-0003 SQLite catalogue supplied with `--source`.
+for the separate local embedding cache. Existing cache files are reused.
+The repository contains no catalogue database snapshot.
 Use PostgreSQL or Neon backups for the catalogue and back up Qdrant separately.
 Allow one indexing writer, with network calls outside catalogue transactions.
 Use Alembic migrations for PostgreSQL schema changes.
@@ -330,44 +268,20 @@ Minimum catalogue tables:
 
 | Table | Required fields and constraints |
 | --- | --- |
-| `images` | Primary key `(generation_id, image_id)`; normalized source location, relative local path, nullable `r2_url`, image SHA-256, MIME type, decoded width and height, and JSON `filter_metadata`. |
+| `images` | Primary key `(generation_id, image_id)`; normalized source location, relative image path, image SHA-256, MIME type, decoded width and height, and JSON `filter_metadata`. |
 | `image_associations` | Generation and image reference, source entry identifier, `record_uid`, `image_uid`, source JSON, title, description, original date text, JSON `places`, `categories`, and `date_ranges`, maker, catalogue identifiers, licence, copyright, and credit. |
 | `image_ingestions` | Unique `(index_version, image_id)`; image checksum, embedding configuration fingerprint, Qdrant collection and point ID, status, attempt count, last error, run ID, and timestamps including `indexed_at`. |
 | `index_generations` | Version, unique Qdrant collection name, model, dimension, preprocessing and query format versions, selection ID, status (`building`, `ready`, `failed`), count, and timestamps. |
 | Run reports | Each generation ID is also its run ID. The catalogue holds generation status and per-image attempts; `runs/<run_id>.json` records indexed, embedded, and reused counts. |
 | `service_state` | Singleton row containing the active ready index version. |
 
-`r2_url` is a permanent, URL-encoded Cloudflare S3 object URL, without credentials
-or expiring signature parameters. The bucket remains private. The R2 linking
-command verifies object SHA-256 metadata before updating all matching catalogue
-rows atomically, across generations. It preserves source locations and image
-IDs. This command is optional. When `R2_ENDPOINT_URL` is configured, indexing
-reads local bytes and automatically derives URLs from the endpoint, bucket,
-optional prefix, and URL-encoded local relative path. It trusts that the completed
-upload matches the local files and makes no R2 requests. New and updated rows,
-resumed generations, and selection snapshots receive these URLs. Without an
-endpoint, new rows have no R2 link and changed paths or checksums clear old links.
-The image API validates active catalogue membership and resolves the image's
-`relative_path` under `IMAGE_ROOT` (default `data/images/`). Paths or symlinks
-outside that root are rejected. Existing local files are served first with
-`Cache-Control: private, max-age=300`, without initializing R2 or checking its
-credentials. If the file is missing, R2 is configured, and the image has a stored
-URL, the API validates the configured object location and returns a 307 redirect to a
-signed GET URL valid for 300 seconds. Each API process maintains a thread-safe
-cache of at most 2,048 URLs, keyed by the verified object URL, generation, and
-checksum. URLs are reused for 240 seconds from signing, with no extension on
-cache hits; the least recently used entry is evicted when full. Membership and
-reference checks run before cache lookup. Failed signatures are never cached,
-and shutdown clears the cache. Redirect responses use `Cache-Control: no-store`.
-Signed GET requests include `ResponseCacheControl=private, max-age=300`, so the
-browser can reuse image bytes at the same URL for five minutes. Cached bytes
-may remain usable after signature expiry; network downloads need a valid
-signature. The frontend follows the redirect directly to the private R2 bucket.
-There is no API disk cache or Cloudflare CDN configuration change.
-When cloud fallback is needed, missing credentials, invalid configuration, or conflicting stored URLs produce
-a sanitized 503 error. Unknown or inactive image IDs produce 404 before signing.
-With no R2 endpoint or no stored link, missing local files return 404. Local
-files are checked on every API request, before consulting the signed URL cache.
+The file endpoint checks membership in the active generation and resolves
+`relative_path` inside `IMAGE_ROOT`. Hosted images use a private HF bucket mounted
+read-only; local development uses the same file-serving path with a local folder.
+Return bytes through the API with `Cache-Control: private, max-age=300`. Missing
+files, unknown IDs, and paths or symlinks outside the root return 404. An unready
+catalogue returns 503. File responses never redirect to storage. Preserve relative
+paths, bytes, checksums, and image IDs when copying files to the bucket.
 
 For agent requests containing a collection record ID such as `co25823`, use the
 [collection ID lookup procedure](collection_id_lookup.md). Match `record_uid`
@@ -382,10 +296,6 @@ retries and reuse across generations and remains local when the catalogue is
 shared or replaced. Its SQLModel metadata is separate from the catalogue schema.
 Cache connections use a 30-second busy timeout.
 
-Migration `0003` removes the empty embedding cache table created by the initial
-PostgreSQL schema. It refuses to drop a nonempty cache table. Ingestion creates
-and reuses the separate local cache beneath `SEARCH_DATA_DIR`.
-
 Derive `image_id` as a UUIDv5 from a fixed project namespace and the normalized
 source location. Use that UUID as the Qdrant point ID. Moving the repository or
 retrying ingestion therefore preserves the ID. A shared image appears once in
@@ -395,7 +305,7 @@ Permanent collection updates modify the retained generation in place.
 
 When `QDRANT_COLLECTION_NAME` is omitted, each generation owns a Qdrant collection
 named `smg_images_<index_version>` with
-one 1536-dimensional dense vector per image and `Cosine` distance. Validate the
+one 768-dimensional dense vector per image and `Cosine` distance. Validate the
 actual configured dimension and distance before writing or querying. Store
 `image_id`, `image_sha256`, `embedding_config_hash`, `index_version`,
 `metadata_schema_version: 1`, and `metadata` in the point payload. Keep full display
@@ -462,9 +372,10 @@ prove the point still exists after a Qdrant restore or storage loss.
 Process up to 10 batches concurrently by default, configurable from 1 to 10 with
 `--workers` or Make's `WORKERS`. Each batch holds up to 10 catalogue images by
 default; `--batch-size` or `BATCH_SIZE` accepts 1–100. Only uncached, distinct
-content is sent to Gemini, with a separate `Content` object and output vector for
-each image. Flush partial batches and split requests at 12 MiB of raw image
-bytes. Reject individual images over that budget or `MAX_IMAGE_BYTES`. Validate
+content is passed to the configured embedding adapter, with one output vector
+per image. SigLIP serializes CPU inference and splits each batch into at most
+eight images; use `WORKERS=1` for the local preview. Flush partial batches and
+split requests at 12 MiB of raw image bytes. Reject individual images over that budget or `MAX_IMAGE_BYTES`. Validate
 the entire response's vector count, dimensions, and values before caching it.
 Commit the response's vectors together before catalogue updates or vector writes.
 
@@ -581,7 +492,7 @@ client generation. Routes below use the frontend origin or the Vite API proxy.
 | `GET /api/v1/filters` | Active `index_version`, `places`, `categories`, `date_min`, and `date_max`. |
 | `GET /api/v1/images` | Browse with `limit`, optional `cursor`, `date_from`, `date_to`, repeated `place` and `category`; return items, `matching_images`, and the next cursor. |
 | `GET /api/v1/images/{image_id}` | Selected image metadata and its source associations. |
-| `GET /api/v1/images/{image_id}/file` | Validated local bytes first, then a temporary signed R2 redirect when missing locally, for the requested active image ID. |
+| `GET /api/v1/images/{image_id}/file` | Bytes from the image mount for the requested active image ID. |
 | `POST /api/v1/search/text` | JSON with `query`, optional `limit` and `filters` object; return ranked image results. |
 | `POST /api/v1/search/image` | Multipart upload with `image`, optional `limit`, `date_from`, `date_to`, and repeated `place` and `category` fields; return ranked results. |
 | `POST /api/v1/images/{image_id}/similar` | Optional JSON `limit` and `filters`; use the vector in Qdrant and exclude the selected image. |
@@ -618,6 +529,10 @@ Validate trimmed text between 1 and 2,000 characters and limits between 1 and 10
 Accept one JPEG or PNG upload up to 10 MiB and 20 million decoded pixels. Check
 both actual format and decoded dimensions. Discard upload bytes and temporary
 files after the request. Collection image validation uses the same limits.
+Before parsing, bound mutation request bodies to 256 KiB for JSON and the
+configured image byte limit plus 1 MiB for multipart encoding and form fields
+(11 MiB by default). Count received bytes even when `Content-Length` is absent
+or understated; reject oversized bodies with `413` and `body_too_large`.
 
 Use a consistent error body with `code` and a safe, actionable `message`:
 
@@ -628,12 +543,12 @@ Use a consistent error body with `code` and a safe, actionable `message`:
 | `413` | Upload exceeds the configured size or pixel limit. |
 | `415` | Unsupported image format. |
 | `422` | Empty query, invalid limit or metadata filters, or corrupt image. |
-| `429` | Search capacity or provider quota is temporarily exhausted. |
+| `429` | Concurrent search capacity is temporarily exhausted. |
 | `503` | No usable index, incompatible configuration, or unavailable embedding provider or Qdrant service. |
 | `504` | Search exceeds the 30-second request deadline. |
 
-Browsing uses the catalogue and local files, falling back to configured R2 delivery. “Find similar” uses Qdrant and continues to
-work when Gemini is unavailable. Qdrant failure makes vector search unavailable
+Browsing uses the catalogue and the image mount. “Find similar” uses Qdrant and continues to
+work when the embedding model is unavailable. Qdrant failure makes vector search unavailable
 while browsing remains usable. Search failure must be shown as an error. Serve
 files only through catalogue IDs with paths constrained to configured image roots.
 
@@ -643,7 +558,7 @@ Use [Pydantic Logfire](https://pydantic.dev/docs/logfire/get-started/) for traci
 the Python backend and AI workflows. Configure it once in each process using the
 service names `multimodal-api` and `multimodal-indexer`.
 
-Trace search requests and indexing runs, with child spans for Gemini embedding
+Trace search requests and indexing runs, with child spans for embedding
 calls, Qdrant operations, and catalogue lookups. Record duration, model, embedding
 dimensions, retries, and success or failure. Include run and image identifiers
 where relevant so operators can investigate slow requests and failed ingestion.
@@ -665,41 +580,50 @@ that captured telemetry excludes request content and raw provider errors. See
 
 ## Configuration and operation
 
-Follow [the Gemini API setup specification](gemini_api_spec.md) for credentials.
-Keep the key in the backend and indexing process environments. Google receives
-selected image bytes during indexing and query text or image bytes during search.
+SigLIP 2 search needs no API key. Configure its model cache, pinned revision,
+CPU threads, and inference batch size in the backend environment. Download the
+weights before enabling `HF_HUB_OFFLINE=1`.
 Store the resulting vectors in local Qdrant or Qdrant Cloud and the catalogue and ingestion
 ledger in the SQL catalogue. Keep credentials in backend settings; frontend environment
 variables contain only public configuration such as the API base URL.
 
-Proposed configuration defaults:
+Configuration defaults:
 
 | Setting | Default |
 | --- | --- |
-| Embedding model | `gemini-embedding-2` |
-| Embedding dimensions | `1536` |
+| Embedding model | `google/siglip2-base-patch16-224` |
+| Embedding revision | `75de2d55ec2d0b4efc50b3e9ad70dba96a7b2fa2` |
+| Embedding dimensions | `768` |
+| `EMBEDDING_MODEL_CACHE` | `data/models/` |
+| `EMBEDDING_CPU_THREADS` | `2` |
+| `EMBEDDING_BATCH_SIZE` | `8` |
 | Selected image limit | `50` |
 | Source scan limit | `1000` |
 | Search data directory | `data/search/` |
 | `DATABASE_URL` | Required PostgreSQL catalogue URL |
 | `DATABASE_URL_UNPOOLED` | Optional direct URL for migrations and writer locks |
+| `CATALOGUE_TRANSPORT` | `postgres`; set `neon_http` for HF catalogue reads over HTTPS 443 |
 | `SEARCH_DATA_DIR` | `data/search/`, resolved from the repository root; local cache and reports |
 | `QDRANT_URL` | `http://127.0.0.1:6333` for processes on the host |
 | `QDRANT_COLLECTION_PREFIX` | `smg_images` |
 | `QDRANT_API_KEY` | Optional backend secret when the Qdrant instance requires authentication |
 | Default result count | `24` |
-| API bind address | `127.0.0.1:8000` |
+| API bind address | `127.0.0.1:8000` locally; `0.0.0.0:7860` in the application container |
 | Frontend development address | `http://localhost:5173` |
 
-Add a `qdrant` service to `compose.yml`. Pin its image to a tested release and
-persist `/qdrant/storage` through a bind mount at `data/search/qdrant/`. Publish
-the HTTP port as `127.0.0.1:6333:6333`. Containerized backend and indexing processes
+The `qdrant` service in `compose.yml` uses a pinned image and persists
+`/qdrant/storage` through a bind mount at `data/search/qdrant/`. Its HTTP port
+is published as `127.0.0.1:6333:6333`. Containerized backend and indexing processes
 use `http://qdrant:6333`; host processes use `QDRANT_URL` above. Configure the same Neon catalogue in both Python processes and resolve image
 roots consistently. Keep each indexing machine’s cache under `SEARCH_DATA_DIR`.
 [Source: Qdrant local setup](https://qdrant.tech/documentation/quickstart/).
 
 The following commands run from the repository root. The Compose configuration
 currently runs Qdrant; the Python backend and Vite development server run on the host.
+
+The root Dockerfile serves the compiled frontend and API on port 7860. The
+[deployment guide](huggingface_spaces.md) contains the local Docker setup,
+release scope, database connection checks, and remaining hosted work.
 
 ```sh
 uv sync --locked --all-packages
@@ -709,7 +633,7 @@ docker compose up -d qdrant
 # Apply the catalogue schema migrations.
 uv run --package multimodal-backend --env-file .env alembic -c backend/alembic.ini upgrade head
 
-# Preview a small selection and estimated request count without calling Gemini.
+# Preview a small selection and estimated request count without loading the embedding model.
 uv run --package multimodal-backend cronjob/index_images.py --limit 20 --scan-limit 1000 --dry-run
 
 # Build the sample and reuse cached vectors on subsequent runs.
@@ -732,25 +656,7 @@ backend settings. Reject conflicting selection options when resuming. Exit `0`
 for success and `2` for invalid options or a failed run. Report partial selections
 clearly. Dry runs and preparation make zero embedding calls or Qdrant writes.
 
-## Implementation and validation
-
-Implement the template layout above. Add FastAPI, Uvicorn, Pydantic,
-`pydantic-settings`, SQLModel, Alembic, `qdrant-client`, `google-genai`,
-`logfire[fastapi]`, Pillow,
-and multipart upload support to the backend dependencies. Lock React, TypeScript,
-Vite, and the selected template frontend packages with Bun.
-
-Build in this order:
-
-1. Scaffold `backend/` and `frontend/` from the template conventions, configure
-   the uv and Bun workspaces, and add the local Qdrant Compose service.
-2. Implement catalogue migrations, bounded selection, ingestion states, and Qdrant
-   publication. Use a fake embedding adapter for automated tests.
-3. Connect Gemini and confirm a small text and image embedding run with matching
-   vector dimensions before indexing the default sample.
-4. Implement the Pydantic API contracts, routes, and generated frontend client.
-5. Build the React workflows and verify text, upload, browse, and similar-image
-   searches against the sample.
+## Validation
 
 Acceptance checks:
 
@@ -778,12 +684,9 @@ Acceptance checks:
 - Measure Qdrant search and catalogue lookup separately from provider latency.
   Aim for under 200 ms at the 95th percentile for the default sample on the
   development machine, recording hardware and sample size with the measurements.
-- Extend pytest discovery to include `backend/tests/` alongside `cronjob/`.
+- Pytest covers `backend/tests/` and `cronjob/`.
   Run affected pytest tests and Ruff for Python changes. Run TypeScript and Biome
   checks and exercise affected React workflows with Playwright and in a browser.
-
-Technical references checked on 19 September 2026. Live embeddings, performance,
-and search relevance remain to be validated during implementation.
 
 Database tests require `TEST_POSTGRES_URL` for a disposable PostgreSQL database
 using a direct connection. Tests create and remove isolated schemas; they never

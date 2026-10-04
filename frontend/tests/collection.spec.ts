@@ -165,13 +165,13 @@ test("uploads images and shows backend errors without discarding results", async
   let uploadType = ""
   await page.route("**/api/v1/search/image", async (route) => {
     uploadType = route.request().headers()["content-type"]
-    await route.fulfill({ status: 429, json: { code: "embedding_quota", message: "Gemini quota is temporarily exhausted. Try again later." } })
+    await route.fulfill({ status: 429, json: { code: "search_busy", message: "Search is busy. Try again shortly." } })
   })
   await page.goto("/")
   await page.getByRole("tab", { name: "Search with an image" }).click()
   await page.locator('input[type="file"]').setInputFiles({ name: "query.png", mimeType: "image/png", buffer: Buffer.from("fixture") })
   await page.getByRole("button", { name: "Explore", exact: true }).click()
-  await expect(page.getByRole("alert")).toContainText("quota")
+  await expect(page.getByRole("alert")).toContainText("busy")
   expect(uploadType).toContain("multipart/form-data")
   await expect(page.getByTestId("image-card")).toHaveCount(2)
 })
@@ -318,4 +318,22 @@ test("sends the selected search image ID to the chat backend", async ({ page }) 
   await page.getByRole("button", { name: "Send message" }).click()
   await expect.poll(() => mock.sent.length).toBe(1)
   expect(mock.sent[0].content).toContain(image.image_id)
+})
+
+
+test("search-only pages do not download chat or studio modules", async ({ page }) => {
+  const modules: string[] = []
+  page.on("request", request => {
+    if (request.resourceType() === "script") modules.push(request.url())
+  })
+  await page.route("**/api/v1/agent/status", route => route.fulfill({ json: {
+    enabled: false, authenticated: false, ready: false, message: "Disabled",
+  } }))
+  await page.goto("/")
+  await expect(page.getByTestId("image-card")).toHaveCount(2)
+  await expect(page.getByRole("button", { name: "Open collection chat" })).toHaveCount(0)
+  await expect(page.getByRole("link", { name: "Image Studio" })).toHaveCount(0)
+  expect(modules.some(url => /chat-panel|studio/.test(url))).toBe(false)
+  await page.getByRole("tab", { name: "Search with an image" }).click()
+  await expect(page.locator(".upload-notice")).toContainText("processed by the search model on this server")
 })

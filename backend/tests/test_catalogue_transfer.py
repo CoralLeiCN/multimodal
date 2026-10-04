@@ -36,15 +36,13 @@ def test_transfer_rolls_back_every_table_on_failure(setup, destination):
         )
 
 
-def test_legacy_sqlite_without_r2_column_imports_as_null(setup, destination):
+def test_sqlite_transfer_preserves_all_catalogue_rows(setup, destination):
     legacy = create_engine("sqlite://")
     try:
         for table in TABLES:
             table.create(legacy)
         with setup[1].connect() as source:
             transfer_catalogue(source, legacy)
-        with legacy.begin() as connection:
-            connection.exec_driver_sql("ALTER TABLE images DROP COLUMN r2_url")
         with legacy.connect() as source:
             assert transfer_catalogue(source, destination)["images"] == 3
             with destination.connect() as target:

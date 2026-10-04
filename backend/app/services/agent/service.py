@@ -160,7 +160,7 @@ class AgentService:
             if (
                 self.settings.blockers()
                 if require_execution
-                else not self.settings.gemini_api_key
+                else self.settings.harness_blockers()
             ):
                 raise AgentError(
                     "not_configured", "Generation is not configured yet.", 503
@@ -302,7 +302,7 @@ class AgentService:
             checkpoint["answers"] = answers
             run.checkpoint = checkpoint
             run.status, run.stage, run.question = "queued", "queued", None
-            # Keep old sandbox identity until the worker confirms its termination.
+            # Keep the previous execution identity until the worker confirms its termination.
             emit(session, run, "queued", "Additional direction received.")
             return self.run_view(session, run)
 

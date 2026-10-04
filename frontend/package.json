@@ -8,7 +8,11 @@
     "build": "tsc --noEmit && vite build",
     "lint": "biome check src --files-ignore-unknown=true",
     "test": "playwright test",
-    "generate-client": "openapi-ts -i openapi.json -o src/client/generated"
+    "generate-client": "openapi-ts -i openapi.json -o src/client/generated",
+    "build:web": "tsc --noEmit && vite build --mode web",
+    "build:studio": "tsc --noEmit && vite build --mode studio",
+    "dev:web": "vite --mode web --host 127.0.0.1",
+    "dev:studio": "vite --mode studio --host 127.0.0.1"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",

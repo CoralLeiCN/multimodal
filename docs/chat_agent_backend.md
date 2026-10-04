@@ -2,41 +2,49 @@
 
 English | [简体中文](chat_agent_backend.CN.md)
 
+This documents the existing Image Studio prototype. The first web release will
+provide collection exploration through Codex, with image generation deferred;
+see the [version and harness decision](product_versions.md). The Codex integration
+is not implemented by these APIs.
+
 This backend implements the product flow: save a company brand, open a conversation,
 search the collection, and send “Use image ID X in our company style.” Subsequent
-messages can ask for changes to the previous result. The collection sidebar now connects to these APIs.
-This document supersedes the single-request product flow in the original image-agent design.
+messages can ask for changes to the previous result. The collection sidebar
+connects to these APIs when `AGENT_ENABLED=true`. Chat and image generation are
+deferred from the search-only HF release.
 
-## Chat service and sandbox executor
+## Chat service and task executor
 
-Gemini Flash handles the conversation in the trusted backend. It reads the saved
+The OpenAI-compatible harness handles the conversation in the trusted backend. It reads the saved
 brand and conversation, replies or asks questions, and compiles an execution request
 only when the user asks for image generation or editing. Greetings and clarification
-never start a sandbox. The worker processes chat asynchronously, outside API requests.
+never start a task process. The worker processes chat asynchronously, outside API requests.
 
 ```mermaid
 flowchart LR
-    User[User message] --> Chat[Gemini Flash chat service]
+    User[User message] --> Chat[OpenAI-compatible chat service]
     Brand[Saved brand] --> Chat
     Chat --> Task[Compiled task and effective brand]
-    Task --> Sandbox[Modal execution agent]
-    Sandbox --> Tools[Scoped tool gateway]
-    Tools --> Images[Local catalogue or online image API]
+    Task --> Executor[Local task process]
+    Executor --> Tools[Scoped tool gateway]
+    Tools --> Images[PostgreSQL catalogue or online image API]
     Tools --> Nano[Nano Banana generation]
     Tools --> Check[Image evaluation]
-    Sandbox --> Result[Images and execution status]
+    Executor --> Result[Images and execution status]
     Result --> Chat
     Chat --> Reply[Chat reply and attachments]
 ```
 
-The sandbox receives a bounded task: compiled prompt, exact source image ID or prior
+The task process receives a bounded task: compiled prompt, exact source image ID or prior
 asset ID, aspect ratio, the current user request, brand version, effective brand
 snapshot, and explicit overrides. It receives no conversation history and has no
 chat/reply tool. It resolves the source, generates with Nano Banana, checks the result,
 optionally makes one revision, and returns structured results. The trusted gateway
-proxies tools and keeps provider, storage, and database credentials outside the sandbox.
+proxies tools; provider, storage, and database credentials are not passed in the task
+process environment. All processes share the container filesystem and network; this
+is not a security sandbox.
 
-The chat service uses Gemini Flash again to describe completed or failed execution.
+The chat service calls the harness again to describe completed or failed execution.
 If that summary call fails, the backend attaches the real outputs with a fallback
 message. Successful generation is not lost because the final chat response failed.
 Users continue editing in the same conversation; the last successful image is the
@@ -53,23 +61,26 @@ evaluation receive the effective brand, so evaluation does not reject a requeste
 override merely because it differs from the saved profile. The raw current request
 also travels with the compiled prompt to preserve its priority.
 
-Gemini Interactions uses `AGENT_CHAT_MODEL` (default `gemini-3.8-flash`), structured
+The OpenAI Python client uses Chat Completions with strict JSON Schema structured
 `reply`/`execute` decisions, `store=False`, and application-managed conversation history.
-The SDK normalizes `attempts=0` to one and treats that as an Interactions retry count;
-the adapter explicitly disables that resource's retry configuration. Provider intent
-is recorded before submission. A stale/ambiguous chat claim is not automatically
-replayed. Logfire spans `chat.prepare`, sandbox tools, and `chat.result` trace the flow.
+Configure `AGENT_OPENAI_BASE_URL`, `AGENT_OPENAI_API_KEY`, and `AGENT_MODEL`.
+`AGENT_CHAT_MODEL` and `AGENT_EVALUATION_MODEL` optionally override the shared model.
+Planning and evaluation send image inputs to the same endpoint; Gemini is used only
+for Nano Banana image generation. Install the `agent` dependency extra first.
+The client sets `max_retries=0` and a 120-second timeout. Provider intent is recorded
+before submission, and ambiguous calls are never replayed automatically.
+Logfire records metadata-only spans for the harness and task tools; it does not
+instrument provider request or response content.
 
 Statuses progress through `chat_queued → chat_preparing`, then either a direct reply
 or `queued → starting → running → execution_done → chat_returning → succeeded/failed`.
 Cancellation and timeouts remain available. Execution results and messages are durable;
-idle conversations do not retain a sandbox.
+idle conversations do not retain a task process.
 
 ## API contract
 
-All endpoints use the existing workspace bearer credential or signed cookie.
-Existing brand, reference upload, run events, cancellation, and asset download APIs
-remain available.
+All endpoints use the workspace bearer credential or signed cookie. Brands and
+assets are scoped to that workspace.
 
 | Endpoint | Behavior |
 | --- | --- |
@@ -89,7 +100,7 @@ message and run status; no fabricated assistant success is appended.
 Submitting the same message and idempotency key returns the original run, including
 its current status. Reusing the key with different content returns 409. A conversation
 allows only one unfinished turn; another submission returns `conversation_busy`.
-Workspace claims still allow one active sandbox. There are at most 20 user turns
+Workspace claims still allow one active task process. There are at most 20 user turns
 per conversation, one Flash preparation call, at most one Flash result-response call,
 and one initial image plus one revision per execution task. Context is not silently truncated. Clarification is an ordinary
 assistant reply; the user's answer is the next message. Successful generated results
@@ -97,14 +108,17 @@ become the default subject of the next turn. Explicit subject selection override
 
 ## Collection image bridge
 
-Use the search result's exact `image_id`, not its title or museum `record_uid`.
+Use the search result's exact `image_id` or a `co` collection record ID.
 The agent can extract the ID from ordinary message text. The executor calls the gateway to resolve it. By default the gateway reads the active
-ready generation in the local catalogue using read-only SQLite. When
+ready generation in the shared PostgreSQL catalogue using `DATABASE_URL`. When
 `AGENT_COLLECTION_API_URL` is configured, it uses that trusted HTTPS API instead,
 calling `GET /api/v1/images/{image_id}` and `GET /api/v1/images/{image_id}/file`.
 Optional `AGENT_COLLECTION_API_TOKEN` provides bearer authentication. It does not
-follow redirects or use a model/metadata-supplied download URL. Exact ID lookup
-needs no Qdrant query or new embedding request. Local reads enforce the image root and catalogue checksum. Online reads validate
+use a model/metadata-supplied download URL. Redirects are rejected. Exact ID lookup
+needs no Qdrant query or new embedding request. Direct catalogue reads use
+`IMAGE_ROOT`, overridden by `AGENT_COLLECTION_IMAGE_ROOT`, pointing at the HF
+bucket mount or local development directory. They enforce the catalogue checksum
+and image byte limit. Missing files return an error. Online reads validate
 the returned ID and bound metadata/image payloads. Both paths decode the image
 before copying it into private agent storage. Once imported, this
 copy stays pinned to the conversation even if the catalogue changes.
@@ -121,17 +135,21 @@ selecting assets authorized for that use. A deployment needing enforced rights
 approval must add its policy before exposing collection generation to other users.
 Outputs remain separate from the official collection index.
 
-## Run in the isolated worktree
+The chat executor accepts `co` collection record IDs as well as image UUIDs.
+For a record ID, the trusted gateway queries `DATABASE_URL` using an exact bound
+`record_uid` match in a read-only, repeatable-read transaction. All distinct images
+from the active ready generation are returned. A single match is resolved to its
+UUID before loading from the configured collection API or mounted image root.
+Multiple matches are returned to chat for selection; the agent does not choose an
+arbitrary image. Missing records and unavailable catalogues have separate errors.
+Imported assets retain `requested_record_uid`, the resolved image UUID, and attribution.
+The gateway process needs the catalogue connection even when image bytes use the
+online API.
 
-The implementation worktree is `/Users/archie.yang/project/multimodal-worktrees/chat-agent`,
-on branch `codex/chat-agent`. The original workspace and its running services were
-not changed. Existing uncommitted implementation files were copied as a baseline;
-credentials, image data, databases, and frontend dependencies were not copied.
+## Run locally
 
-From that worktree, install with `uv sync --locked --all-packages`, then create its
-own ignored `.env`. Configure the Gemini key, Logfire token, workspace access key,
-and public HTTPS gateway as in [Image Studio setup](image_agent_setup.md). Use a
-separate port, Modal app, workspace, and database:
+From the repository root, install with `uv sync --locked --all-packages --extra agent`, then
+configure an ignored `.env` as in [Image Studio setup](image_agent_setup.md):
 
 ```dotenv
 AGENT_ENABLED=true
@@ -139,42 +157,45 @@ AGENT_ENVIRONMENT=development
 AGENT_WORKSPACE=chat-dev
 AGENT_DATABASE_URL=sqlite:///data/agent-chat/agent.sqlite3
 AGENT_STORAGE=local
-AGENT_MODAL_APP=multimodal-chat-dev
-AGENT_CHAT_MODEL=gemini-3.8-flash
-AGENT_COLLECTION_DATABASE=/Users/archie.yang/project/multimodal/data/search/catalog.sqlite3
-AGENT_COLLECTION_IMAGE_ROOT=/Users/archie.yang/project/multimodal/data/images
-# AGENT_ACCESS_TOKEN, GEMINI_API_KEY, LOGFIRE_TOKEN, and AGENT_GATEWAY_URL also required.
+AGENT_OPENAI_BASE_URL=https://api.openai.com/v1
+AGENT_OPENAI_API_KEY=<provider key>
+AGENT_MODEL=<vision model available at the endpoint>
+AGENT_CHAT_MODEL=
+AGENT_EVALUATION_MODEL=
+# Set AGENT_ACCESS_TOKEN and GEMINI_API_KEY; configure Logfire when needed.
+# DATABASE_URL supplies the shared catalogue.
+# IMAGE_ROOT or AGENT_COLLECTION_IMAGE_ROOT supplies collection images.
 ```
 
-Point a separate HTTPS tunnel at `http://127.0.0.1:8002` and use that origin as
-`AGENT_GATEWAY_URL`. Create the separate Modal app once with:
+Start the API and worker together, without building the frontend:
 
 ```sh
-uv run --package multimodal-backend python -c 'import modal; modal.App.lookup("multimodal-chat-dev", create_if_missing=True)'
+uv run --package multimodal-backend --extra agent python -m app.space --agent-only --host 127.0.0.1 --port 8002
 ```
 
-Start the API directly, without building the frontend:
-
-```sh
-uv run --package multimodal-backend uvicorn app.services.agent.application:create_agent_app --factory --host 127.0.0.1 --port 8002
-```
-
-In another terminal in the same worktree, run `make agent-worker`. This worker coordinates Flash chat and
-separately dispatches compiled image tasks to Modal. Chat-only requests need Gemini;
-image execution additionally needs the HTTPS gateway. Startup applies
-migration `agent_0002`, adding conversations/messages while preserving existing
-agent tables. Modal credentials use the existing CLI profile or exported environment
-variables. Only the gateway and task token enter the sandbox.
+The supervisor sets the internal gateway to `http://127.0.0.1:8002`. The worker
+coordinates Flash chat and launches compiled image tasks as local child processes.
+To run the API and worker manually, use `make agent-api PORT=8002` and
+`make agent-worker` in separate terminals with `AGENT_GATEWAY_URL=http://127.0.0.1:8002`.
+Use only one worker per workspace. A restart fails interrupted tasks without
+replaying uncertain model calls; saved images remain available.
 
 Cloud deployments can configure a trusted online collection API or make the
-read-only catalogue and image root available to the gateway. The existing production
-image does not bundle local collection data. Imported subjects and generated images use the configured S3 storage.
+PostgreSQL catalogue and image root available to the gateway. The existing production
+image does not bundle local collection data. Imported subjects and generated images use a separate private HF bucket.
+
+The shared search catalogue uses Neon PostgreSQL. Image UUIDs use `DATABASE_URL`
+by default. Set `AGENT_COLLECTION_API_URL` to use a trusted HTTPS collection API
+instead. Collection record IDs always resolve through `DATABASE_URL` first. An unavailable
+catalogue returns `collection_unavailable`; an unknown image returns `image_missing`.
+The agent reads `.env` and `.env.local`, with `.env.local` taking precedence.
+Uploaded-asset generation remains independent of search.
 
 ## Try the API
 
-Use FastAPI `/docs` or an HTTP client. First save a brand with
-`POST /api/v1/agent/brands`, including reference asset IDs returned by the existing
-upload endpoint. Use the response's `id` as `brand_version`.
+Use FastAPI `/docs` or an HTTP client. First save the six brand design fields
+through `POST /api/v1/agent/brands`. Use the response's
+`id` as `brand_version`.
 
 Create a conversation:
 
@@ -207,27 +228,18 @@ conversation with a new idempotency key:
 
 ## Verification and limits
 
-Run `uv run pytest backend/tests/test_chat.py backend/tests/test_agent.py` and
-`uv run ruff check .`. Tests exercise the trusted chat coordinator and actual sandbox execution loop against
+Run `uv run --all-packages --extra agent pytest backend/tests/test_chat.py backend/tests/test_agent.py` and
+`uv run ruff check .`. Tests exercise the trusted chat coordinator and actual task process execution loop against
 fake providers, real catalogue fixtures, a mocked online API, authentication, persistent
 history, edits, cancellation, ambiguous calls, schema migration, and the locked SDK's
-single HTTP attempt on failure. Boundary tests prove chat does not start a sandbox,
+single HTTP attempt on failure. Boundary tests prove chat does not start a task process,
 executors cannot call chat tools, and color overrides reach generation and evaluation
 without changing the saved brand.
 
-No chat frontend is added. Current authentication still represents one configured
-workspace operator rather than company membership/SSO. Real Gemini chat quality,
+The collection sidebar provides the chat frontend. Current authentication still represents one configured
+workspace operator rather than company membership/SSO. Real harness model quality,
 cloud catalogue availability, and end-to-end conversation traces require an
 explicitly configured development deployment; mocked tests do not verify those.
-
-
-The shared search catalogue now uses Neon PostgreSQL. Configure
-`AGENT_COLLECTION_API_URL` with the trusted HTTPS collection API origin to use
-that catalogue from the agent. `AGENT_COLLECTION_DATABASE` reads a legacy local
-SQLite snapshot only; it does not connect directly to Neon. Without either an
-available snapshot or the API configuration, collection-ID generation returns
-`collection_unavailable`. Uploaded-asset generation remains independent of search.
-
 
 ## Connected collection sidebar
 
@@ -240,23 +252,9 @@ or selected as `subject_asset_id` for a follow-up edit. Task errors and cancella
 remain visible in history; retrying a lost HTTP submission reuses its original key.
 The `/create` page edits the six brand design fields; image generation happens in chat.
 
-
 Planning and evaluation use GenerateContent's JSON Schema field for strict
 Pydantic contracts. Restart the API and worker after updating backend code;
 already-running processes retain their previously imported provider adapter.
-
-
-The chat executor accepts `co` collection record IDs as well as image UUIDs.
-For a record ID, the trusted gateway queries `DATABASE_URL` using an exact bound
-`record_uid` match in a read-only, repeatable-read transaction. All distinct images
-from the active ready generation are returned. A single match is resolved to its
-UUID before loading from the configured collection API or local image root.
-Multiple matches are returned to chat for selection; the agent does not choose an
-arbitrary image. Missing records and unavailable catalogues have separate errors.
-Imported assets retain `requested_record_uid`, the resolved image UUID, and attribution.
-The gateway process needs the catalogue connection even when image bytes use the
-online API. Restart the API and worker after updating this code.
-
 
 ## Brand design templates
 
@@ -264,9 +262,7 @@ The brand editor stores name, description, colors, personality, typography, and
 illustration style. All model stages receive the six-field brand brief rendered
 from `backend/app/prompts/image_agent.yaml`. This file also owns the common system
 prompt and chat, planning, generation, and evaluation instructions. See
-[the designer guide](brand_prompts.md). New fields default to empty strings for old
-profiles. Legacy preserve/avoid/reference fields remain accepted by the API for
-existing clients and historical profiles, but are not exposed in the brand form.
+[the designer guide](brand_prompts.md).
 
 ### Evaluation failures after generation
 
@@ -283,8 +279,3 @@ codes, and 429 to `provider_rate_limited`; uncertain transport errors keep
 `outcome_unknown`. Check `.env` overrides for `AGENT_MODEL` and
 `AGENT_EVALUATION_MODEL` when a deprecated model returns 404. Restart API and worker
 after changing model configuration.
-
-The online image reader accepts a single 307 redirect from the image file route
-to the configured R2 HTTPS endpoint and bucket. It preserves the response size
-limit and never forwards collection API authorization to storage. Other redirect
-destinations and further redirects are rejected.

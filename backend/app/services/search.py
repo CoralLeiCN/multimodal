@@ -6,11 +6,9 @@ from contextlib import contextmanager
 from time import perf_counter
 
 import logfire
-from sqlalchemy import func
-from sqlmodel import Session, select
 
 from app.core.config import Settings
-from app.models import Association, Generation, Image, ServiceState
+from app.models import Generation
 from app.schemas import (
     AssociationRead,
     BrowseResponse,
@@ -20,30 +18,25 @@ from app.schemas import (
     SearchResponse,
     StatusResponse,
 )
+from app.services.catalogue import Catalogue, PostgresQueries
 from app.services.embeddings import SearchError
-from app.services.image_delivery import ImageDelivery
-from app.services.metadata import catalogue_filter, labels
+from app.services.metadata import labels
 from app.services.selection import safe_path
 
 
 class SearchService:
-    def __init__(self, engine, settings: Settings, vectors, embeddings):
+    def __init__(
+        self, engine, settings: Settings, vectors, embeddings, *, catalogue=None
+    ):
         self.engine, self.settings = engine, settings
+        self.catalogue = catalogue or Catalogue(PostgresQueries(engine))
         self.vectors, self.embeddings = vectors, embeddings
         self._active = None
         self._verified = False
         self._slots = threading.BoundedSemaphore(4)
-        self.image_delivery = ImageDelivery(settings)
-
-    def close(self):
-        self.image_delivery.close()
 
     def generation(self, require_vectors=False) -> Generation:
-        with Session(self.engine) as session:
-            state = session.get(ServiceState, 1)
-            generation = (
-                session.get(Generation, state.active_generation) if state else None
-            )
+        generation = self.catalogue.generation()
         if not generation or generation.status != "ready":
             self._active, self._verified = None, False
             raise SearchError(
@@ -57,6 +50,14 @@ class SearchService:
             self._verified = False
         self._active = generation
         if require_vectors:
+            if (
+                self.settings.qdrant_collection_name
+                and self.settings.qdrant_collection_name != generation.collection
+            ):
+                raise SearchError(
+                    "The configured Qdrant collection does not match the active catalogue.",
+                    "index_mismatch",
+                )
             if generation.config_hash != self.settings.config_hash:
                 raise SearchError(
                     "Backend embedding settings do not match the active collection.",
@@ -64,10 +65,7 @@ class SearchService:
                 )
             try:
                 if not self._verified:
-                    with Session(self.engine) as session:
-                        images = session.exec(
-                            select(Image).where(Image.generation_id == generation.id)
-                        ).all()
+                    images = self.catalogue.images(generation.id)
                     self.vectors.verify(generation, images)
                     self._verified = True
                 else:
@@ -95,7 +93,10 @@ class SearchService:
         try:
             generation = self.generation()
         except SearchError as error:
-            return StatusResponse(status="empty", message=str(error))
+            return StatusResponse(
+                status="empty" if error.code == "index_empty" else "unavailable",
+                message=str(error),
+            )
         try:
             self.generation(require_vectors=True)
         except SearchError as error:
@@ -107,10 +108,11 @@ class SearchService:
             )
         return StatusResponse(
             status="ready",
+            embedding_provider="local",
             index_version=generation.id,
             indexed_images=generation.count,
             search_available=True,
-            text_search_available=bool(self.settings.gemini_api_key),
+            text_search_available=True,
             message="Your collection is ready to explore.",
         )
 
@@ -120,20 +122,8 @@ class SearchService:
     ) -> dict[str, ImageRead]:
         if not ids:
             return {}
-        with Session(self.engine) as session:
-            images = session.exec(
-                select(Image).where(
-                    Image.generation_id == generation.id, Image.image_id.in_(ids)
-                )
-            ).all()
-            associations = session.exec(
-                select(Association)
-                .where(
-                    Association.generation_id == generation.id,
-                    Association.image_id.in_(ids),
-                )
-                .order_by(Association.id)
-            ).all()
+        images = self.catalogue.images(generation.id, ids)
+        associations = self.catalogue.associations(generation.id, ids)
         by_image = {image.image_id: [] for image in images}
         for association in associations:
             route = (
@@ -170,10 +160,23 @@ class SearchService:
             )
         return result
 
+    def lookup_record(self, record_uid: str):
+        generation = self.generation()
+        ids = self.catalogue.record_images(generation.id, record_uid)
+        images = self.read_images(generation, ids)
+        return {
+            "index_version": generation.id,
+            "record_uid": record_uid,
+            "results": [images[key].model_dump(mode="json") for key in ids],
+            "message": ""
+            if ids
+            else "No images for this record in the active indexed catalogue.",
+        }
+
     def image_source(self, image_id: str):
         generation = self.generation()
-        with Session(self.engine) as session:
-            image = session.get(Image, (generation.id, image_id))
+        images = self.catalogue.images(generation.id, [image_id])
+        image = images[0] if images else None
         if not image:
             raise SearchError(
                 "This image is not part of the current collection.",
@@ -183,17 +186,12 @@ class SearchService:
         path = safe_path(self.settings, image.relative_path, must_exist=False)
         if path.is_file():
             return path, image.mime_type
-        if url := self.image_delivery.signed_url(image):
-            return url, image.mime_type
         raise SearchError("This collection image is unavailable.", "image_missing", 404)
 
     @logfire.instrument("catalogue.filter_options", extract_args=False)
     def filter_options(self) -> FilterOptions:
         generation = self.generation()
-        with Session(self.engine) as session:
-            associations = session.exec(
-                select(Association).where(Association.generation_id == generation.id)
-            ).all()
+        associations = self.catalogue.associations(generation.id)
         ranges = [interval for item in associations for interval in item.date_ranges]
         return FilterOptions(
             index_version=generation.id,
@@ -240,25 +238,7 @@ class SearchService:
                     "filters_changed",
                     409,
                 )
-        with Session(self.engine) as session:
-            predicate = catalogue_filter(filters)
-            matching = session.exec(
-                select(func.count())
-                .select_from(Image)
-                .where(Image.generation_id == generation.id, predicate)
-            ).one()
-            ids = list(
-                session.exec(
-                    select(Image.image_id)
-                    .where(
-                        Image.generation_id == generation.id,
-                        Image.image_id > last_id,
-                        predicate,
-                    )
-                    .order_by(Image.image_id)
-                    .limit(limit + 1)
-                ).all()
-            )
+        matching, ids = self.catalogue.browse(generation.id, filters, last_id, limit)
         next_cursor = None
         if len(ids) > limit:
             ids = ids[:limit]

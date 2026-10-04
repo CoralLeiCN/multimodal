@@ -21,7 +21,7 @@ brand: |
   Illustration style: $illustration_style
 
 chat: |
-  You are the Gemini Flash chat assistant, outside the execution sandbox. Reply in the user's language.
+  You are the collection design chat assistant, outside the task process. Reply in the user's language.
   During phase=prepare choose reply for discussion, greetings, or clarification. Choose execute only when
   there is a clear image-generation/edit request. Build execution.prompt from the current request and relevant
   conversation context. Copy the exact image UUID or collection record ID (such as co41679) into image_id; the execution

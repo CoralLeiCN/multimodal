@@ -11,6 +11,20 @@ from app.services.agent.storage import AgentError
 
 def resolve_record_images(record_uid, engine=None):
     """Resolve every distinct image in a single read-only catalogue snapshot."""
+    return _resolve_catalogue_images(record_uid, by_record=True, engine=engine)
+
+
+def resolve_image(image_id, engine=None):
+    """Resolve an image UUID in the same shared catalogue used by search."""
+    matches = _resolve_catalogue_images(image_id, by_record=False, engine=engine)
+    if not matches:
+        raise AgentError(
+            "image_missing", "No current collection image has this image_id.", 404
+        )
+    return matches[0]
+
+
+def _resolve_catalogue_images(identifier, *, by_record, engine=None):
     from sqlalchemy import text
     from sqlalchemy.exc import SQLAlchemyError
 
@@ -49,9 +63,11 @@ def resolve_record_images(record_uid, engine=None):
                         "SELECT DISTINCT i.image_id,i.title,i.relative_path,i.checksum,i.generation_id "
                         "FROM image_associations a JOIN images i "
                         "ON i.generation_id=a.generation_id AND i.image_id=a.image_id "
-                        "WHERE a.generation_id=:generation AND a.record_uid=:record ORDER BY i.image_id"
+                        "WHERE a.generation_id=:generation AND "
+                        + ("a.record_uid" if by_record else "i.image_id")
+                        + "=:identifier ORDER BY i.image_id"
                     ),
-                    {"generation": generation["id"], "record": record_uid},
+                    {"generation": generation["id"], "identifier": identifier},
                 )
                 .mappings()
                 .all()
@@ -108,6 +124,9 @@ def read_collection_image(settings, image_id):
         return data, {**source, "requested_record_uid": image_id}
     if settings.collection_api_url:
         return read_online_image(settings, image_id)
+    if settings.collection_database is None:
+        image = resolve_image(image_id)
+        return read_local_image(settings, image, image["associations"])
     database = Path(settings.collection_database).resolve()
     if not database.is_file():
         raise AgentError(
@@ -208,27 +227,8 @@ def read_online_image(settings, image_id):
             "Bearer " + settings.collection_api_token.get_secret_value()
         )
 
-    def fetch(client, url, limit, allow_r2=False):
+    def fetch(client, url, limit):
         with client.stream("GET", url) as response:
-            if response.status_code == 307 and allow_r2:
-                from app.core.config import Settings
-                from app.services.r2_catalogue import r2_destination
-
-                endpoint, bucket = r2_destination(Settings())
-                target = response.headers.get("location", "")
-                target_url = urlparse(target)
-                trusted = urlparse(endpoint)
-                if (
-                    target_url.scheme != "https"
-                    or target_url.netloc != trusted.netloc
-                    or target_url.username
-                    or target_url.fragment
-                    or not target_url.path.startswith("/" + bucket + "/")
-                ):
-                    raise ValueError("Untrusted image redirect")
-                # Collection API credentials must never be forwarded to object storage.
-                with httpx.Client(timeout=20, follow_redirects=False) as storage_client:
-                    return fetch(storage_client, target, limit)
             if response.status_code == 404:
                 raise AgentError(
                     "image_missing", "No online collection image has this ID.", 404
@@ -258,7 +258,7 @@ def read_online_image(settings, image_id):
             ):
                 raise ValueError("Mismatched image metadata")
             content = fetch(
-                client, origin + path + "/file", settings.max_image_bytes, allow_r2=True
+                client, origin + path + "/file", settings.max_image_bytes
             )
         return content, {
             "type": "collection",

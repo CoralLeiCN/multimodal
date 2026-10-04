@@ -6,7 +6,6 @@ import pytest
 from app.agent_models import Call, TraceBatch
 from app.agent_runtime.contracts import BrandInput, RunInput, ToolRequest
 from app.agent_runtime.runner import run_agent
-from app.core.telemetry import accept_trace
 from app.services.agent.application import create_agent_app
 from app.services.agent.auth import task_token, verify
 from app.services.agent.config import AgentSettings
@@ -14,6 +13,7 @@ from app.services.agent.db import engine_for, migrate, transaction
 from app.services.agent.gateway import Gateway
 from app.services.agent.service import AgentService
 from app.services.agent.storage import AgentError
+from app.services.agent.telemetry import accept_trace
 from app.services.agent.worker import Worker
 from fastapi.testclient import TestClient
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
@@ -101,7 +101,7 @@ class FakeProvider:
         }, None
 
 
-class FakeModal:
+class FakeExecutor:
     def __init__(self):
         self.names = {}
         self.codes = {}
@@ -136,6 +136,8 @@ def agent(tmp_path):
         asset_root=tmp_path / "assets",
         gateway_url="https://gateway.example",
         gemini_api_key="fake-key",
+        openai_api_key="fake-key",
+        model="fixture-model",
         logfire_token=None,
     )
     engine = engine_for(settings)
@@ -150,7 +152,7 @@ def agent(tmp_path):
             reference_asset_ids=[ref["id"]],
         )
     )
-    yield service, brand, subject, FakeProvider(), FakeModal()
+    yield service, brand, subject, FakeProvider(), FakeExecutor()
     engine.dispose()
 
 
@@ -282,7 +284,7 @@ def test_cancel_fences_inflight_result(agent):
         assert call.status == "completed"  # audit survives cancellation
 
 
-def test_unknown_modal_create_is_reconciled_not_repeated(agent):
+def test_unknown_process_create_is_reconciled_not_repeated(agent):
     service, _, _, _, manager = agent
     run = new_run(agent)
     manager.uncertain = True
@@ -425,7 +427,7 @@ def test_api_auth_upload_sse_and_disabled_state(agent):
         )
     with TestClient(create_agent_app(AgentSettings(_env_file=None))) as client:
         assert client.get("/api/v1/agent/status").json()["enabled"] is False
-        assert client.get("/api/v1/agent/brands").status_code == 503
+        assert client.get("/api/v1/agent/brands").status_code == 404
 
 
 def test_budget_reservation_survives_process_loss(agent):
@@ -476,49 +478,15 @@ def test_only_one_revision_can_be_reserved_concurrently(agent):
     assert sorted(outcomes) == ["reserved", "revision_limit"]
 
 
-def test_modal_adapter_has_scoped_network_and_no_provider_secrets(agent, monkeypatch):
-    import types
-
-    import app.services.agent.modal_sandbox as adapter
-
-    service, _, _, _, _ = agent
-    run = new_run(agent)
-    activate(agent, run["id"])
-    captured = {}
-    monkeypatch.setattr(adapter.modal.App, "lookup", lambda *a, **kw: "app")
-    monkeypatch.setattr(adapter, "runtime_image", lambda: "runtime-only-image")
-    monkeypatch.setattr(adapter.modal.Secret, "from_dict", lambda value: value)
-
-    def create(*args, **kwargs):
-        captured.update(kwargs)
-        captured["command"] = args
-        return types.SimpleNamespace(object_id="sb-real-adapter")
-
-    monkeypatch.setattr(adapter.modal.Sandbox, "create", create)
-    with Session(service.engine) as session:
-        row = service.run(session, run["id"])
-        assert (
-            adapter.ModalSandboxManager(service.settings).create(row)
-            == "sb-real-adapter"
-        )
-    assert captured["outbound_domain_allowlist"] == ["gateway.example"]
-    assert captured["outbound_cidr_allowlist"] == []
-    assert captured["inbound_cidr_allowlist"] == []
-    assert captured["command"] == ("python", "-m", "agent_runtime.runner")
-    assert set(captured["secrets"][0]) == {"AGENT_TASK_TOKEN"}
-    assert "fake-key" not in str(captured)
-    assert captured["timeout"] == 600
-
-
 def test_refusal_and_bad_dimensions_preserve_failure_without_retry(agent):
     import types
 
-    from app.services.agent.provider import GeminiProvider
+    from app.services.agent.image_provider import GeminiImageProvider
 
     service, _, _, _, _ = agent
     run = new_run(agent)
     claims = activate(agent, run["id"])
-    provider = GeminiProvider.__new__(GeminiProvider)
+    provider = GeminiImageProvider.__new__(GeminiImageProvider)
     from app.services.agent.prompts import load_prompts
 
     provider.prompts = load_prompts()
@@ -590,94 +558,6 @@ def test_cancel_keeps_completed_candidates(agent):
     assert saved["status"] == "cancelled"
     assert [asset["id"] for asset in saved["artifacts"]] == [result["asset_id"]]
     assert saved["review_status"] == "needs_review"
-
-
-def test_agent_instruments_genai_without_reconfiguring_search_tracing(monkeypatch):
-    from app.core import telemetry
-
-    calls = []
-    monkeypatch.setattr(telemetry, "_configured", True)
-    monkeypatch.setattr(telemetry, "_genai_instrumented", False)
-    monkeypatch.setattr(
-        telemetry.logfire, "configure", lambda **kw: calls.append("configure")
-    )
-    monkeypatch.setattr(
-        telemetry.logfire, "instrument_google_genai", lambda: calls.append("genai")
-    )
-    monkeypatch.setenv(
-        "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "SPAN_ONLY"
-    )
-    telemetry.configure(AgentSettings(_env_file=None))
-    telemetry.configure(AgentSettings(_env_file=None))
-    import os
-
-    assert calls == ["genai"]
-    assert (
-        os.environ["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] == "NO_CONTENT"
-    )
-
-
-@pytest.mark.parametrize("operation", ["plan", "evaluate"])
-def test_structured_provider_uses_json_schema_wire_format(operation):
-    import json
-
-    import httpx
-    from app.services.agent.provider import GeminiProvider
-    from google import genai
-    from google.genai import types
-
-    output = (
-        {"summary": "Ready", "prompt": "Blue object", "reference_asset_ids": []}
-        if operation == "plan"
-        else {
-            "subject_score": 90,
-            "brand_score": 90,
-            "request_score": 90,
-            "summary": "Matches the request",
-            "action": "accept",
-        }
-    )
-    requests = []
-
-    def handle(request):
-        body = json.loads(request.content)
-        config = body["generationConfig"]
-        assert "responseSchema" not in config
-        assert config["responseJsonSchema"]["additionalProperties"] is False
-        assert "additional_properties" not in request.content.decode()
-        requests.append(body)
-        return httpx.Response(
-            200,
-            json={
-                "candidates": [
-                    {
-                        "content": {
-                            "role": "model",
-                            "parts": [{"text": json.dumps(output)}],
-                        }
-                    }
-                ]
-            },
-        )
-
-    provider = GeminiProvider(AgentSettings(_env_file=None, gemini_api_key="test"))
-    provider.close()
-    provider.client = genai.Client(
-        api_key="test",
-        http_options=types.HttpOptions(
-            client_args={"transport": httpx.MockTransport(handle)},
-            retry_options=types.HttpRetryOptions(attempts=1),
-        ),
-    )
-    try:
-        if operation == "plan":
-            result, _ = provider.plan({}, {}, [], [])
-        else:
-            result, _ = provider.evaluate({}, {}, [])
-        assert result["summary"] == output["summary"]
-        assert len(requests) == 1
-    finally:
-        provider.close()
 
 
 def test_six_brand_fields_persist_across_versions(agent):

@@ -20,14 +20,24 @@ Run commands from the repository root with Python 3.12 or newer. The silver-to-g
 - `uv run cronjob/silver_to_gold.py`: convert the official silver CSV into gold Parquet.
 - `python3 cronjob/match_images.py`: process bronze exports and images into `data/processed/image_manifest.csv` and `image_match_summary.json`.
 - `python3 cronjob/match_images.py --help`: inspect input paths, output paths, and strict matching options.
-- `uv run --with pytest pytest`: run the Python backend tests.
-- `uv run --with ruff ruff check .`: lint Python code with Ruff.
+- `uv run --all-packages --extra agent --extra web pytest`: run the Python backend tests with a disposable `TEST_POSTGRES_URL`.
+- `uv run ruff check .`: lint Python code with Ruff.
 
-The `--with` options supply pytest and Ruff until they are added to the project's development dependencies.
+pytest and Ruff are included in the project's locked development dependencies.
 
 ## Code & Specification Alignment
 
 Keep code and specifications aligned in the same change. When implementation behavior changes, update the affected specifications and documentation, including `data_spec.md`, `README.md`, and `cronjob/README.md` where relevant. When a specification changes the intended behavior, update the corresponding implementation. Before completing the task, check that both describe the same inputs, outputs, defaults, data fields, and filtering rules.
+
+## Shared Collection Retrieval
+
+The HF search edition and web edition consume one published Qdrant collection,
+its matching PostgreSQL catalogue generation, and the same HF image release.
+Keep retrieval in `SearchService`; Codex collection tools call that service.
+Index each dataset release once through the separate indexing command. Do not
+create an agent-specific collection or write collection vectors from query paths.
+Keep model, revision, dimensions and preprocessing aligned across both editions.
+Follow the [shared retrieval contract](docs/product_versions.md#shared-retrieval-contract).
 
 ## Testing & Linting Guidelines
 

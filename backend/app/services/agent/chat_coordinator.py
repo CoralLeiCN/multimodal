@@ -1,4 +1,4 @@
-"""Trusted Gemini Flash chat coordinator. Sandboxes receive execution tasks only."""
+"""Trusted OpenAI-compatible chat coordinator. Task processes receive execution tasks only."""
 
 import copy
 import time
@@ -11,7 +11,6 @@ from app.agent_models import Call, Message, Run, Workspace, uid
 from app.agent_runtime.contracts import ChatDecision
 from app.services.agent.chat import ChatService
 from app.services.agent.db import transaction
-from app.services.agent.provider import GeminiProvider
 from app.services.agent.service import digest, emit
 
 
@@ -164,7 +163,9 @@ class ChatCoordinator:
         try:
             with logfire.span("chat." + phase, run_id=run_id):
                 try:
-                    provider = provider or GeminiProvider(svc.settings)
+                    from app.services.agent.provider import AgentProvider
+
+                    provider = provider or AgentProvider(svc.settings)
                     raw, usage = provider.chat(model_context, brand)
                     decision = ChatDecision.model_validate(raw)
                 except Exception:  # noqa: BLE001 -- never replay a possibly billed request or expose raw provider errors
@@ -261,7 +262,7 @@ class ChatCoordinator:
             session,
             run,
             "execution_queued",
-            "The compiled design task is ready for the sandbox.",
+            "The compiled design task is ready for execution.",
         )
 
     def failure(self, session, run, phase, code):

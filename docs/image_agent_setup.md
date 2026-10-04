@@ -1,21 +1,26 @@
 # Image Studio setup
 
-[Design](image_agent_design.md) · [设计中文版](image_agent_design.CN.md)
+This guide describes the existing Image Studio prototype. Both the public HF
+explorer and the first web release exclude image generation. The web
+collection agent uses Codex; see the [version decision](product_versions.md).
+In this prototype, the OpenAI client
+handles conversation, planning, and evaluation through
+a configured compatible endpoint. Nano Banana generates images,
+and child processes execute compiled tasks. Pydantic Logfire traces execution.
 
-Image Studio runs the Python agent inside a Modal Sandbox. Gemini plans and evaluates
-images, Nano Banana generates them, and Pydantic Logfire traces execution. Uploaded
-references work independently of the collection catalogue and Qdrant.
-
-Gemini Flash handles conversation outside the sandbox; only compiled design tasks
-enter the sandbox. Explicit user choices override brand defaults for that task.
-The conversation backend and isolated-worktree setup are documented in
-[Brand chat agent backend](chat_agent_backend.md). The `/create` page contains the six-field brand editor only; the collection sidebar
-handles conversation, generation, results, and editing. See [brand prompts](brand_prompts.md).
+The harness handles conversation outside the task process; only compiled design tasks
+enter the task process. Explicit user choices override brand defaults for that task.
+Conversation APIs and a separate local development environment are documented in
+[Brand chat agent backend](chat_agent_backend.md). The `/create` page contains
+the six-field brand editor; the collection sidebar handles conversation, generation,
+results, and editing. See [brand prompts](brand_prompts.md).
 
 ## Prepare the local application
 
-Install the locked dependencies with `uv sync --locked --all-packages`, then run
-`make build`. The studio is available at `/create` through the normal app. To run
+Install the locked dependencies with `uv sync --locked --all-packages --extra agent`, then run
+`make build-studio`. Run the combined application with
+`uv run --package multimodal-backend --extra agent uvicorn app.studio:app --host 127.0.0.1 --port 8000`;
+the studio is available at `/create`. To run
 only creation services, without opening the search database or contacting Qdrant:
 
 ```sh
@@ -37,90 +42,107 @@ AGENT_STORAGE=local
 Open `/create` and sign in with the workspace access key. It is exchanged for an
 HTTP-only, SameSite=Strict session cookie lasting eight hours; it is not stored in
 browser local storage. API clients can send the same key as a bearer token. The
-first release uses one operator credential bound to one server-configured workspace.
+agent uses one operator credential bound to one server-configured workspace.
 It does not include user registration, membership administration, or company SSO.
 
 Brand profiles and immutable versions work before model access
-is configured. Generation remains unavailable until the Gemini key and public HTTPS
-gateway origin are configured. Creating runs does not start a worker automatically.
+is configured. Generation requires the harness API key, model, Gemini image key,
+and loopback gateway origin. Creating runs does not start a worker automatically.
 A status of `queued` means a worker has not claimed the run yet; it is not proof
-that Modal credentials or model access have been validated.
+that model access has been validated.
 
-## Deploy the cloud services
+## Run the prototype container
 
-Use a separate Modal environment for development and production. Before deployment,
-create a private object storage bucket, a PostgreSQL database dedicated to the agent,
-and a Pydantic Logfire project. Configure a Modal Secret named
-`multimodal-agent-services` with:
+The `EDITION=studio` Docker image runs `python -m app.space`. This starts the API, waits for
+its listening socket, then starts a polling worker when `AGENT_ENABLED=true`.
+The supervisor sets `AGENT_GATEWAY_URL=http://127.0.0.1:7860` for both processes.
+The worker and API exit together if either process fails. Container shutdown
+signals both and waits up to ten seconds before killing remaining processes.
+The HF search release has its own search-only artifact and entry point.
+The default image excludes both model-provider SDKs. For a local prototype image,
+build with `EDITION=studio` as a Docker build argument before setting
+`AGENT_ENABLED=true`. Locally:
+
+```sh
+docker build --build-arg EDITION=studio -t multimodal-space:agent .
+```
+
+The `agent` dependency extra installs `openai` and `google-genai`. Search uses
+neither SDK. Disabled servers expose only the agent status endpoint; chat and
+Image Studio frontend modules load on demand.
+
+When enabling this prototype, inject public configuration and credentials through
+the container environment and the host's secret manager:
 
 | Variable | Value |
 | --- | --- |
-| `AGENT_ACCESS_TOKEN` | Random operator credential, at least 32 characters |
+| `AGENT_ENABLED` | `true` |
+| `AGENT_ACCESS_TOKEN` | Secret operator credential, at least 32 characters |
 | `AGENT_WORKSPACE` | Workspace identifier; default `default` |
-| `AGENT_DATABASE_URL` | `postgresql+psycopg://...` connection URL; use the database provider's TLS settings |
-| `AGENT_STORAGE` | `s3` |
-| `AGENT_S3_BUCKET` | Private bucket name |
-| `AGENT_S3_REGION` | Bucket region; default `eu-west-2` |
-| `AGENT_S3_ENDPOINT` | Optional HTTPS origin for S3-compatible storage |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Scoped object storage credentials, unless an alternate AWS credential chain is configured |
-| `GEMINI_API_KEY` | Key with access to the selected models |
-| `AGENT_GATEWAY_URL` | Public HTTPS origin of this deployment, without a path or trailing query |
-| `LOGFIRE_TOKEN` | Write token for the Logfire project |
+| `AGENT_DATABASE_URL` | Secret PostgreSQL URL for a database dedicated to the agent |
+| `AGENT_STORAGE` | `hf` |
+| `AGENT_HF_BUCKET` | Private bucket ID, separate from collection images |
+| `AGENT_HF_TOKEN` | Secret HF token with upload, download, list, and delete access to the agent bucket |
+| `AGENT_OPENAI_API_KEY` | Secret key for the harness endpoint; `OPENAI_API_KEY` is also accepted |
+| `AGENT_OPENAI_BASE_URL` | API base URL, default `https://api.openai.com/v1`; `OPENAI_BASE_URL` is also accepted |
+| `AGENT_MODEL` | Required planning model; default for chat and evaluation |
+| `GEMINI_API_KEY` | Secret key for Gemini image generation only |
+| `LOGFIRE_TOKEN` | Secret write token for the Logfire project |
 | `AGENT_LOGFIRE_API_URL` | Project-region API origin; default `https://logfire-api.pydantic.dev` |
 
-The deployment sets `AGENT_ENABLED=true` and `AGENT_ENVIRONMENT=production`.
-Production startup rejects SQLite, local file storage, missing Logfire credentials,
-and missing Gemini/gateway configuration. Object storage needs read, write, list,
-and delete permissions within the application's prefix for orphan cleanup.
+The Docker image sets `AGENT_ENVIRONMENT=production`. Production startup requires
+PostgreSQL, HF bucket storage, Logfire, and both model-provider configurations. Provider and
+bucket credentials stay in the API/worker environment. Each task process receives
+only its gateway address, scoped task token, trace context, parent PID, deadline,
+and temporary-directory settings. It uses the same installed dependencies as the
+API and runs only the checked-in runtime; model output is data, never executable code.
 
-Authenticate the Modal CLI, select the intended environment, and run:
+The task processes share the container's filesystem, user, network, CPU, and memory.
+They are not security sandboxes and have no separate network allowlist or resource
+allocation. Size the container for the API, the worker, and one active task.
+Use one container replica and one worker for each workspace. A second worker cannot
+reconnect to child handles owned by the first and could mark its runs interrupted.
+
+For local agent development, configure the settings above with development storage
+as described earlier, then run both services together:
 
 ```sh
-make agent-deploy
+uv run --package multimodal-backend --extra agent python -m app.space --agent-only --host 127.0.0.1 --port 8001
 ```
 
-The app is named `multimodal-agent`. The deployment defines a FastAPI web endpoint
-and a worker scheduled every 30 seconds, with at most one worker container. Set
-`AGENT_GATEWAY_URL` to the origin shown for the `web` endpoint. On the first deploy,
-update that Secret field once the endpoint URL is known, then redeploy before
-submitting work. The frontend is served by the same origin at `/create`; `/` redirects
-there for the standalone creation deployment.
-
-Do not run `make agent-worker` against the same environment as an additional scheduler
-unless needed for debugging. It runs a polling worker every five seconds. Database
-claims and attempt fencing protect ownership, but one scheduled worker is sufficient.
-
-The worker provisions a fresh Modal Sandbox for each attempt. Its image contains
-only the portable runtime and locked dependencies, and it has 1 CPU and a 1 GiB
-memory limit. It receives a short-lived task token and the public gateway origin;
-Gemini, database, bucket, Logfire, and Modal provisioning credentials stay in the
-trusted services. Only the gateway hostname is on the sandbox's outbound allowlist.
-A local `127.0.0.1` backend cannot serve this remote sandbox.
+This command uses the loopback gateway on port 8001. For profile preparation
+without model credentials, use `make agent-api PORT=8001`. When starting the API
+and `make agent-worker` manually, set `AGENT_GATEWAY_URL=http://127.0.0.1:8001`
+for both. A public tunnel is unnecessary. Keep this prototype separate from the
+public search deployment described in the [HF guide](huggingface_spaces.md).
 
 ## Models, limits, and recovery
 
 | Setting | Default |
 | --- | --- |
-| `AGENT_MODEL` | `gemini-3.8-flash` |
-| `AGENT_EVALUATION_MODEL` | `gemini-3.8-flash` |
+| `AGENT_CHAT_MODEL` | Uses `AGENT_MODEL` when empty |
+| `AGENT_MODEL` | Required; choose a model available at the configured endpoint |
+| `AGENT_EVALUATION_MODEL` | Uses `AGENT_MODEL` when empty |
 | `AGENT_IMAGE_MODEL` | `gemini-3.1-flash-image` |
 | `AGENT_RUN_TIMEOUT` | 600 seconds |
 | `AGENT_STARTUP_TIMEOUT` | 180 seconds |
 | `AGENT_MAX_QUEUED_RUNS` | 10 queued, active, or waiting runs per workspace |
 
-The legacy run and asset APIs accept one subject and up to three style references, PNG/JPEG/WebP,
-10 MiB and 20 million pixels each. A revision adds the previous candidate as a
-fifth model input. Animated and invalid images are rejected. Candidate count is
-one or two; each run allows one additional revision, at most eight combined
-planning/evaluation calls, and one active sandbox per workspace. The controls for
-subject preservation and brand influence guide prompts rather than numerical model
-parameters. Generated image aspect ratio is checked within a 10% tolerance.
+The endpoint must support Chat Completions, strict JSON Schema structured outputs,
+`store=false`, and `max_completion_tokens`. Planning and evaluation models must
+also accept base64 image inputs. There is no automatic model or provider fallback.
+The client sends one request per step, with a 120-second timeout and SDK retries
+disabled. Confirm compatibility with the chosen endpoint before enabling testers.
+See [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs).
+Logfire records operation, model, token counts, timing, and sanitized failures;
+automatic provider instrumentation is disabled to keep prompts and images out of traces.
 
-The sandbox plans, generates candidates, evaluates them, and revises the weakest
-candidate once when requested by its structured evaluation. Brand profiles are
-written by the user; the planning model interprets descriptions and references at
-run time. Scores guide review and are not guarantees of brand or subject fidelity.
-A follow-up edit starts a new run using the selected output as its subject.
+Each conversation permits up to 20 user turns and one unfinished turn at a time.
+The trusted chat service compiles generation requests into bounded tasks. Each
+execution can generate one initial image and one revision; successful results
+become the subject of follow-up edits. The workspace allows one active task process.
+Evaluation scores support review and do not guarantee brand or subject fidelity.
+See [the conversation contract](chat_agent_backend.md#api-contract) for API limits.
 
 Paid calls are recorded before submission. Identical completed steps return their
 saved results, and an ambiguous submission is never automatically repeated. The
@@ -128,30 +150,36 @@ provider SDK uses one attempt per call. A timeout may leave `outcome_unknown` ev
 when Google generated and charged for an image. Start a new run only when you want
 another paid attempt. Different requests with the same submission key return 409.
 
-Checkpoints and asset records live outside the sandbox. Worker restarts reconnect
-to a known sandbox or reconcile its deterministic name; they do not replay an
-uncertain creation. Unexpected exits fail the run and preserve completed candidates.
-A clarification releases the sandbox; answering creates a new attempt. Cancellation
-revokes tool access immediately and the next worker sweep terminates the sandbox.
+Checkpoints and asset records persist in PostgreSQL and the HF bucket. Each task
+process exits when its worker parent disappears or its deadline expires, even if
+the polling loop stops. Worker shutdown terminates and reaps its children. After a
+worker or container restart, interrupted attempts fail and preserve completed candidates;
+they are never automatically replayed. Persisted `sandbox_id` and `sandbox_name`
+fields now identify local process attempts, not remote resources.
+Chat clarification returns an ordinary reply without starting a task process.
+Cancellation revokes tool access immediately and the next worker sweep terminates
+the task process.
 Already submitted provider calls may still incur charges. Unreferenced task files
 older than 24 hours are eligible for cleanup; referenced inputs and outputs are retained.
+The HF adapter uses the bucket's server upload time, skips entries with unknown
+timestamps, and examines at most 1,000 entries per cleanup pass.
 
 Actual provider usage is recorded when returned. Currency estimates, daily spend
-quotas, and Modal billing reconciliation are not implemented; provider dashboards
+quotas, and currency reconciliation are not implemented; provider dashboards
 remain the source for charges. Count, concurrency, queue, and runtime limits are enforced.
 
 ## Tracing
 
-Logfire instruments trusted Google Gen AI calls. The sandbox creates explicit spans
+Logfire records explicit metadata-only spans around trusted model calls. The task process creates explicit spans
 and sends them through an authenticated OTLP relay using its task token. The relay
 checks the attempt and trace ID, removes arbitrary attributes, exception messages,
 events, and content, and persists sanitized batches for forwarding to Logfire.
-`OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=NO_CONTENT` is forced on the
-trusted process; raw prompt and image capture is not exposed as an application option.
+Automatic provider instrumentation is disabled; raw prompt and image capture is
+not exposed as an application option.
 
 The run API returns the trace ID for searching in Logfire. Trace delivery uses
-a bounded backlog of 500 batches with a 24-hour retry window. The sandbox buffers
-128 spans and exports batches of at most 64 spans. A hard sandbox exit may
+a bounded backlog of 500 batches with a 24-hour retry window. The task process buffers
+128 spans and exports batches of at most 64 spans. A hard task process exit may
 lose final spans; persisted run events remain the source of execution status. Tracing
 failure does not erase results. The authenticated status endpoint reports an absent
 Logfire configuration or relay backlog. It does not claim verified delivery.
@@ -166,29 +194,38 @@ make build
 PLAYWRIGHT_BASE_URL=http://127.0.0.1:8001 bun run --cwd frontend test
 ```
 
-Backend tests use isolated SQLite, image fixtures, and fake Modal/Gemini services.
+Backend tests use isolated SQLite, image fixtures, real local task processes,
+and fake model services.
 They cover the actual portable agent loop, revision budgets, stale attempts,
 idempotency, uncertain submissions, lifecycle recovery, trace redaction, and API
 access. Browser tests exercise sign-in, profiles, creation, edits, cancellation,
 and upload errors with mocked API responses. Neither test suite makes paid calls.
 
-Before real use, perform a cloud smoke test with a configured development environment:
-verify a recorded Modal sandbox ID, gateway-only network access, one real generated
+Local validation on 26 September 2026 passed all 233 Python tests, Ruff, Biome,
+and the frontend build. The rebuilt Linux amd64 image contains no Modal package.
+A real task process completed through the HTTP gateway with a fake image provider,
+persisted its result, and was reaped. The Space supervisor started the API and
+worker together and shut down both cleanly. The tests also cover cancellation,
+deadline and parent loss, interrupted attempts, and child startup failures.
+
+HF asset operations are covered with SDK fakes; a real private bucket still needs
+verification. Before real use, perform a cloud smoke test with a configured development environment:
+verify a recorded process attempt, one real generated
 image persisted in the bucket, Logfire trace delivery, cancellation, and PostgreSQL
 claims across worker restarts. Those checks require cloud credentials and are not
 substituted by the fake-service tests.
 
-After changing dependencies, run `make agent-lock` and rebuild/redeploy. The two
-requirements files in `deploy/` are exports from `uv.lock`; do not edit them by hand.
+After changing dependencies, update `uv.lock` and rebuild/redeploy. The Docker
+build exports its requirements directly from that lockfile.
 The collection search client can be regenerated separately with `make generate-client`.
-The chat backend can resolve collection image IDs from a read-only catalogue and
-image root accessible to the gateway. Use the collection cards’ **Use in chat** control to insert image IDs into chat;
-see the chat guide for configuration and source handling.
 
+## Collection source configuration
 
-The shared search catalogue now uses Neon PostgreSQL. Configure
-`AGENT_COLLECTION_API_URL` with the trusted HTTPS collection API origin to use
-that catalogue from the agent. `AGENT_COLLECTION_DATABASE` reads a legacy local
-SQLite snapshot only; it does not connect directly to Neon. Without either an
-available snapshot or the API configuration, collection-ID generation returns
-`collection_unavailable`. Uploaded-asset generation remains independent of search.
+The agent uses `DATABASE_URL` to resolve image UUIDs in the shared PostgreSQL
+catalogue by default. Source images use `IMAGE_ROOT`, overridden by
+`AGENT_COLLECTION_IMAGE_ROOT`. Use a read-only HF mount in hosted deployments.
+Missing files return an error; available bytes must match the catalogue checksum. Set `AGENT_COLLECTION_API_URL`
+to use a trusted HTTPS collection API instead. Record IDs such as `co25823` need
+`DATABASE_URL` even when the image bytes come from the online API.
+The agent reads `.env` and `.env.local`, with `.env.local` taking precedence.
+Uploaded-asset generation remains independent of search.

@@ -1,7 +1,6 @@
 import copy
 import time
 from concurrent.futures import ThreadPoolExecutor
-from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -502,85 +501,6 @@ def test_chat_api_and_progress(agent):
         )
 
 
-def test_chat_provider_interactions_has_no_retention_or_retries(agent, monkeypatch):
-    import app.services.agent.provider as module
-
-    calls = []
-
-    class Client:
-        def __init__(self, **kwargs):
-            assert kwargs["http_options"].retry_options.attempts == 1
-            self.interactions = SimpleNamespace(
-                create=self.create,
-                sdk_configuration=SimpleNamespace(retry_config="default"),
-            )
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            pass
-
-        def create(self, **kwargs):
-            assert self.interactions.sdk_configuration.retry_config is None
-            calls.append(kwargs)
-            return SimpleNamespace(
-                output_text='{"action":"reply","message":"Hello"}', usage=None
-            )
-
-    monkeypatch.setattr(module.genai, "Client", Client)
-    provider = module.GeminiProvider.__new__(module.GeminiProvider)
-    from app.services.agent.prompts import load_prompts
-
-    provider.prompts = load_prompts()
-    provider.settings = agent[0].settings
-    result, _ = provider.chat(
-        {"messages": [{"role": "user", "content": "Hello"}]}, {"description": "Brand"}
-    )
-    assert result["action"] == "reply"
-    assert calls[0]["store"] is False
-    assert calls[0]["model"] == "gemini-3.8-flash"
-    assert "previous_interaction_id" not in calls[0]
-    assert '"role": "user"' in calls[0]["input"]
-
-
-def test_locked_interactions_sdk_sends_one_request_on_server_error(agent, monkeypatch):
-    import app.services.agent.provider as module
-
-    original = module.genai.Client
-    requests = []
-
-    def handle(request):
-        requests.append(request)
-        return httpx.Response(
-            503,
-            json={
-                "error": {
-                    "code": 503,
-                    "message": "unavailable",
-                    "status": "UNAVAILABLE",
-                }
-            },
-        )
-
-    def client(**kwargs):
-        kwargs["http_options"].client_args = {"transport": httpx.MockTransport(handle)}
-        return original(**kwargs)
-
-    monkeypatch.setattr(module.genai, "Client", client)
-    provider = module.GeminiProvider.__new__(module.GeminiProvider)
-    from app.services.agent.prompts import load_prompts
-
-    provider.prompts = load_prompts()
-    provider.settings = agent[0].settings
-    from google.genai._gaos.lib.compat_errors import InternalServerError
-
-    with pytest.raises(InternalServerError):
-        provider.chat({"messages": []}, {})
-    assert len(requests) == 1
-    assert "/interactions" in str(requests[0].url)
-
-
 def test_chat_migration_upgrades_existing_agent_tables_without_data_loss(tmp_path):
     from alembic import command
     from alembic.config import Config
@@ -757,18 +677,19 @@ def test_record_resolves_to_uuid_before_online_fetch(agent, monkeypatch):
 def test_evaluation_rejection_preserves_image_and_safe_diagnostics(
     agent, conversation, caplog
 ):
-    from google.genai.errors import ClientError
+    from openai import NotFoundError
 
     class UnavailableEvaluator(ChatProvider):
         def evaluate(self, brief, brand, assets):
-            raise ClientError(
-                404,
-                {
-                    "error": {
-                        "message": "private-provider-message",
-                        "status": "NOT_FOUND",
-                    }
-                },
+            raise NotFoundError(
+                "private-provider-message",
+                response=httpx.Response(
+                    404,
+                    request=httpx.Request(
+                        "POST", "https://provider.test/v1/chat/completions"
+                    ),
+                ),
+                body=None,
             )
 
     provider = UnavailableEvaluator(
@@ -822,50 +743,33 @@ def test_record_lookup_reports_building_separately_from_connection_failure(
         engine.dispose()
 
 
-@pytest.mark.parametrize("trusted", [True, False])
-def test_online_image_redirect_only_to_configured_r2_without_credentials(
-    agent, monkeypatch, trusted
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+def test_online_image_reader_rejects_redirects_without_forwarding_credentials(
+    agent, monkeypatch, status
 ):
-    from app.core import config
-    from app.core.config import Settings
-
-    endpoint = "https://" + "a" * 32 + ".r2.cloudflarestorage.com"
-    settings = Settings(_env_file=None, r2_endpoint_url=endpoint, r2_bucket="images")
-    monkeypatch.setattr(config, "Settings", lambda: settings)
-    svc = agent[0]
-    svc.settings.collection_api_url = "https://collection.example"
     from pydantic import SecretStr
 
+    svc = agent[0]
+    svc.settings.collection_api_url = "https://collection.example"
     svc.settings.collection_api_token = SecretStr("private-collection-token")
     requests = []
     original = httpx.Client
 
     def handle(request):
         requests.append(request)
-        if request.url.host == "collection.example":
-            if request.url.path.endswith("/file"):
-                destination = endpoint if trusted else "https://untrusted.example"
-                return httpx.Response(
-                    307,
-                    headers={
-                        "location": destination + "/images/photo.jpg?signature=test"
-                    },
-                )
-            return httpx.Response(200, json={"image_id": "one", "associations": []})
-        assert "authorization" not in request.headers
-        return httpx.Response(200, content=picture())
+        assert request.url.host == "collection.example"
+        if request.url.path.endswith("/file"):
+            return httpx.Response(
+                status, headers={"location": "https://storage.example/image"}
+            )
+        return httpx.Response(200, json={"image_id": "one", "associations": []})
 
     monkeypatch.setattr(
         httpx,
         "Client",
         lambda **kwargs: original(**kwargs, transport=httpx.MockTransport(handle)),
     )
-    if trusted:
-        data, source = read_collection_image(svc.settings, "one")
-        assert data == picture()
-        assert source["image_id"] == "one"
-        assert len(requests) == 3
-    else:
-        with pytest.raises(AgentError):
-            read_collection_image(svc.settings, "one")
-        assert len(requests) == 2
+    with pytest.raises(AgentError) as error:
+        read_collection_image(svc.settings, "one")
+    assert error.value.code == "collection_unavailable"
+    assert len(requests) == 2

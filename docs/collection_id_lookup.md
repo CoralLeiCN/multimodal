@@ -35,12 +35,11 @@ Scope joins by both `generation_id` and `image_id` to keep historical runs separ
    dataset. To investigate source coverage, match gold `uid` or bronze
    `@admin.uid` separately and label those results as source records.
 
-The current text search endpoint embeds its query with Gemini. Collection ID
-lookup uses the PostgreSQL procedure below; there is no dedicated collection ID API
-endpoint or search-box detection. It requires no Gemini request, Qdrant request,
-or reindexing. The image detail and file endpoints also read from PostgreSQL and local
-files. Local thumbnails must be present to open the images. Preserve the source
-association's attribution and rights when presenting them; see
+Text search embeds descriptions with SigLIP 2. Collection ID lookup uses the
+exact PostgreSQL procedure below; the search box has no identifier detection.
+The lookup requires no embedding, Qdrant query, or reindexing. Image details come
+from PostgreSQL, and the file endpoint serves thumbnails from the configured
+HF bucket mount or local development directory. Preserve the source association's attribution and rights; see
 [the data specification](../data_spec.md).
 
 ## Run a lookup
@@ -110,7 +109,7 @@ PY
 
 An empty `images` array means no match in the active ready catalogue. A missing
 connection or schema is a setup error. Check the
-[Neon setup](neon_setup.md) and `DATABASE_URL` before retrying. This lookup makes
+[Neon setup](../backend/README.md#neon-collaboration) and `DATABASE_URL` before retrying. This lookup makes
 no schema or data changes.
 
 

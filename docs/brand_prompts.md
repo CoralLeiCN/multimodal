@@ -23,7 +23,7 @@ Open [image_agent.yaml](../backend/app/prompts/image_agent.yaml). There are six 
 - `system`: common behavior and instruction priority.
 - `brand`: the six-field brand brief, populated from the saved profile.
 - `chat`: when to reply, compile an image task, or explain execution results.
-- `plan`: creative planning for the legacy run API.
+- `plan`: creative planning instructions for image runs.
 - `generate`: how Nano Banana translates the brand into visual choices.
 - `evaluate`: how the result is assessed and when a revision is requested.
 
@@ -39,7 +39,7 @@ requested lettering; it does not request adding text or logos to every image.
 The provider reads this YAML when initialized. Restart the API and worker after
 editing prompts so the change applies consistently. For a deployed service,
 redeploy to ship the updated file. The YAML is packaged under `app/` alongside
-backend code and is included in the Modal service image. The sandbox receives the
+backend code and is included in the prototype image. The task process receives the
 compiled task; provider credentials and template execution remain in the gateway.
 
 Run `make agent-test` and `make lint` after edits. These tests check template

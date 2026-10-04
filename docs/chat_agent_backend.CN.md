@@ -2,19 +2,22 @@
 
 [English](chat_agent_backend.md) | 简体中文
 
+本文描述现有 Image Studio 原型。首个 Web 版本使用 Codex 探索馆藏，生图留待后续。
+Codex 接入尚未实现，架构和实施顺序见[版本与 harness 决策](product_versions.md)。
+
 英文版为主文档。此后端实现“配置公司品牌 → 开启聊天 → 引用搜索结果图片 ID →
-按品牌风格生成 → 在同一聊天继续修改”的产品流程，替代原设计中单次生成表单的主流程。
-搜索页聊天侧栏已接入此后端。
+按品牌风格生成 → 在同一聊天继续修改”的产品流程。设置 `AGENT_ENABLED=true` 后，
+搜索页聊天侧栏接入此后端。聊天和生图不包含在 HF 的首个搜索版本中。
 
-## 聊天服务与 sandbox 执行端
+## 聊天服务与 任务进程 执行端
 
-Gemini Flash 在可信后端处理聊天，读取品牌和会话历史，回复或澄清需求。只有用户明确
-要求生图／编辑时，才整理出执行任务交给 Modal sandbox。问候和澄清不会创建 sandbox。
+OpenAI 兼容 harness 在可信后端处理聊天，读取品牌和会话历史，回复或澄清需求。只有用户明确
+要求生图／编辑时，才整理出执行任务交给容器内的任务进程。问候和澄清不会创建任务进程。
 Worker 异步处理聊天，不把长时间模型调用放进 API 请求。
 
-流程：用户消息与品牌 → Gemini Flash 整理任务 → sandbox 按 ID 查图、调用 Nano Banana、
-检查并最多修订一次 → 返回图片与执行状态 → Gemini Flash 组织聊天回复。
-Sandbox 只收到本轮用户要求、整理后的 prompt、图片 ID／已有 asset ID、比例、品牌版本、
+流程：用户消息与品牌 → OpenAI 兼容 harness 整理任务 → 任务进程 按 ID 查图、调用 Nano Banana、
+检查并最多修订一次 → 返回图片与执行状态 → OpenAI 兼容 harness 组织聊天回复。
+任务进程 只收到本轮用户要求、整理后的 prompt、图片 ID／已有 asset ID、比例、品牌版本、
 本轮生效的品牌快照与覆盖项，不接收聊天历史，也没有聊天或回复工具。
 工具网关代理外部调用，模型、存储和数据库密钥留在可信服务。
 
@@ -24,14 +27,16 @@ colors、preserve、avoid 的明确覆盖会合并到任务里，未指定的品
 品牌原始版本不修改。Nano Banana 生图与视觉评估都使用本轮生效的规则，
 不会仅因用户指定颜色与品牌预设不同就判为不合格。原始本轮要求也随任务传递。
 
-执行完成或失败后，聊天服务调用 Flash 解释结果。若最终总结失败，仍保留真实生成图片并
+执行完成或失败后，聊天服务调用 harness 解释结果。若最终总结失败，仍保留真实生成图片并
 返回备用回复。下一轮默认使用最后成功生成的图片，也可显式选择其他图片。
-会话、消息与结果持久保存，空闲会话不保留 sandbox。
+会话、消息与结果持久保存，空闲会话不保留 任务进程。
 
-聊天模型默认 `AGENT_CHAT_MODEL=gemini-3.8-flash`，使用 Interactions、结构化 reply／execute、
-`store=False` 和应用持久化历史。固定 SDK 存在零重试配置被改写的问题，因此显式关闭
-Interactions resource 的重试；所有付费调用先记录意图，结果不确定时不盲目重放。
-Logfire 的 `chat.prepare`、sandbox 工具与 `chat.result` span 连接整个流程。
+聊天、规划与评估使用 OpenAI Python 客户端的 Chat Completions 接口，返回严格 JSON Schema
+约束的结构化结果，设置 `store=False`，历史由应用保存。配置 `AGENT_OPENAI_BASE_URL`、
+`AGENT_OPENAI_API_KEY` 和 `AGENT_MODEL`；`AGENT_CHAT_MODEL`、`AGENT_EVALUATION_MODEL`
+为空时使用共享模型。规划和评估模型必须支持图片输入。Nano Banana 图片生成仍使用 Gemini。
+先安装 `agent` 可选依赖；客户端设置 `max_retries=0`、120 秒超时。所有付费调用先记录意图，
+结果不确定时不自动重放。Logfire 仅记录模型、操作、令牌数、耗时和脱敏错误，不记录提示或图片。
 
 状态：`chat_queued → chat_preparing` 后直接回复，或进入
 `queued → starting → running → execution_done → chat_returning → succeeded/failed`。
@@ -54,18 +59,20 @@ Logfire 的 `chat.prepare`、sandbox 工具与 `chat.result` span 连接整个�
 助手文字和附件原子写入会话。SSE 提供执行进度，并非逐 token 文本流；完成后读取会话。
 失败／取消保留用户消息与运行状态，不伪造成功回复。相同幂等键与内容返回原 run；
 内容不同返回 409。同一会话只接受一个未完成轮次，否则返回 `conversation_busy`。
-工作空间最多一个活动 sandbox。每会话最多 20 条用户消息，每轮一次 Flash 需求整理、最多一次 Flash 结果回复，
+工作空间最多一个活动 任务进程。每会话最多 20 条用户消息，每轮一次 Flash 需求整理、最多一次 Flash 结果回复，
 执行任务最多 1 张初始图和 1 次修订；上下文不静默截断。澄清问题是普通助手消息，回答作为下一轮。
 成功生成的最后一张图成为下一轮默认主体，显式选图可以覆盖它。
 
 ## 图片 ID 与来源
 
-使用搜索结果的 `image_id`，不是标题或博物馆 `record_uid`。用户可以直接在聊天文字中
-写入 ID。Sandbox 调用网关查找图片：默认通过只读 SQLite 查询当前 ready 馆藏版本；配置
+使用搜索结果的 `image_id` 或 `co` 藏品记录 ID。用户可以直接在聊天文字中
+写入 ID。任务进程 调用网关查找图片：默认通过 `DATABASE_URL` 只读查询 PostgreSQL 当前 ready 馆藏版本；配置
 `AGENT_COLLECTION_API_URL` 后改用可信线上 HTTPS API 的图片详情与文件接口。
-可通过 `AGENT_COLLECTION_API_TOKEN` 配置 bearer 鉴权。它不跟随重定向，也不使用模型或
+可通过 `AGENT_COLLECTION_API_TOKEN` 配置 bearer 鉴权。线上读取拒绝重定向，也不使用模型或
 元数据提供的下载 URL。精确 ID 查询不依赖 Qdrant 或重新计算 embedding。
-本地读取验证图片根路径和 checksum，线上读取核对返回 ID 并限制响应大小；两种方式
+直接读取默认使用 `IMAGE_ROOT`，`AGENT_COLLECTION_IMAGE_ROOT` 可覆盖该路径。
+云端通过只读 HF bucket 挂载读取馆藏图片；本地开发使用相同相对路径的目录。缺失文件返回错误。
+本地读取验证图片根路径和 checksum，线上 API 读取核对返回 ID 并限制响应大小；两种方式
 都验证图片大小和解码结果，再复制到私有 agent 存储。
 导入副本固定在会话中，不随馆藏后续变化而替换。不存在的 ID 会得到检查 ID 的聊天回复，
 不会发起生成；模型不能提供任意文件路径或外部 URL。
@@ -75,28 +82,27 @@ Logfire 的 `chat.prepare`、sandbox 工具与 `chat.result` span 连接整个�
 不判定衍生用途是否获得授权；操作者应选择已获相应用途授权的素材。若部署需要强制许可
 审核，应在对外开放馆藏生成前接入相应策略。结果不进入官方馆藏索引。
 
-## 独立工作区运行
+## 本地运行
 
-Worktree：`/Users/archie.yang/project/multimodal-worktrees/chat-agent`，分支 `codex/chat-agent`。
-原工作区和运行中的服务没有修改。已有未提交实现复制为基线，未复制密钥、数据库、
-图片或前端依赖。新目录执行 `uv sync --locked --all-packages`，创建独立 `.env`。
+在仓库根目录执行 `uv sync --locked --all-packages --extra agent`，创建本地 `.env`。
 
-使用 `AGENT_WORKSPACE=chat-dev`、`AGENT_DATABASE_URL=sqlite:///data/agent-chat/agent.sqlite3`、
-`AGENT_MODAL_APP=multimodal-chat-dev`，本地 SQLite／文件模式开发。
-`AGENT_COLLECTION_DATABASE` 与 `AGENT_COLLECTION_IMAGE_ROOT` 可指向原项目的馆藏数据库
-和图片绝对路径，读取不会修改它们。Gemini、Logfire、工作空间登录 key 及 HTTPS 网关
-配置见[配置指南](image_agent_setup.md)。使用转发到 8002 的独立隧道，并将新地址设为
-`AGENT_GATEWAY_URL`。完整环境变量示例和 Modal app 创建命令见英文版。
+使用 `AGENT_WORKSPACE=chat-dev`、`AGENT_DATABASE_URL=sqlite:///data/agent-chat/agent.sqlite3`，
+以本地 SQLite／文件模式开发。设置 `AGENT_ENABLED=true`、`AGENT_ENVIRONMENT=development`、
+`AGENT_STORAGE=local`、`AGENT_ACCESS_TOKEN` 和 `GEMINI_API_KEY`。
+`DATABASE_URL` 指向共享馆藏数据库，`AGENT_COLLECTION_IMAGE_ROOT` 可指定本地图片路径。
+完整配置见[配置指南](image_agent_setup.md)。
 
-不构建前端，直接启动后端：
+同时启动 API 和 worker：
 
 ```sh
-uv run --package multimodal-backend uvicorn app.services.agent.application:create_agent_app --factory --host 127.0.0.1 --port 8002
+uv run --package multimodal-backend --extra agent python -m app.space --agent-only --host 127.0.0.1 --port 8002
 ```
 
-另一终端运行 `make agent-worker`，它协调 Flash 聊天，并单独向 Modal 派发执行任务。
-纯聊天需要 Gemini；图片执行另需 HTTPS 网关。启动迁移 `agent_0002` 新增会话／消息表，保留既有数据。
-Modal 使用已配置的 CLI 凭证；sandbox 只得到网关地址和任务 token。
+监督进程自动将内部网关设为 `http://127.0.0.1:8002`，无需公网隧道。
+Worker 协调聊天，并在同一个容器内启动任务子进程。
+每个工作空间只运行一个 worker。子进程使用任务 token，环境中不传递模型、数据库或 HF 密钥；
+但各进程共享容器的文件系统与网络，不构成安全沙箱。子进程在父进程退出或超过时限时结束。
+容器或 worker 重启后，中断的任务标记失败，保留已生成图片，不自动重放不确定的付费调用。
 云端网关可连接配置好的线上馆藏 API，也可读取挂载的馆藏数据库和图片；现有生产镜像
 不会自动包含本地馆藏。
 
@@ -107,21 +113,18 @@ messages 接口发送 `{"content":"把 ID 为 xxx 的图片设计成公司的风
 
 ## 验证与限制
 
-执行 `uv run pytest backend/tests/test_chat.py backend/tests/test_agent.py` 和
+执行 `uv run --all-packages --extra agent pytest backend/tests/test_chat.py backend/tests/test_agent.py` 和
 `uv run ruff check .`。测试覆盖真实对话循环配合 provider 替身、馆藏 fixtures、鉴权 API、
-持久化历史、编辑、取消、调用结果不确定、旧数据库迁移与 SDK 零重试。
-边界测试验证普通聊天不创建 sandbox、执行端不能调用聊天工具，以及颜色覆盖同时传到
+持久化历史、编辑、取消、调用结果不确定、数据库迁移与 SDK 零重试。
+边界测试验证普通聊天不创建 任务进程、执行端不能调用聊天工具，以及颜色覆盖同时传到
 生成和评估而不修改原品牌。线上查图使用 HTTP 替身验证固定地址、重定向和大小限制。
-本次不包括聊天前端，鉴权仍为单工作空间操作者，尚无公司成员管理／SSO。
-真实 Gemini 对话质量、云端馆藏读取和完整 tracing 仍需配置开发环境联调。
+馆藏侧栏提供聊天前端，鉴权仍为单工作空间操作者，尚无公司成员管理／SSO。
+真实模型对话质量、云端馆藏读取和完整 tracing 仍需配置开发环境联调。
 
-
-共享搜索目录已迁移至 Neon PostgreSQL。Agent 通过
-`AGENT_COLLECTION_API_URL` 配置可信 HTTPS 搜索 API 地址来读取共享目录。
-`AGENT_COLLECTION_DATABASE` 仅支持旧版本地 SQLite 快照，不直接连接 Neon。
-未配置在线 API 且没有可用快照时，按图片 ID 生图会返回 `collection_unavailable`；
-上传图片生图不依赖搜索目录。
-
+共享搜索目录使用 Neon PostgreSQL，Agent 默认通过 `DATABASE_URL` 解析图片 UUID。
+可通过 `AGENT_COLLECTION_API_URL` 改用可信 HTTPS 搜索 API。藏品记录 ID 始终先通过
+`DATABASE_URL` 解析。目录不可用返回 `collection_unavailable`，图片不存在返回 `image_missing`。
+Agent 读取 `.env` 和 `.env.local`，后者优先。上传图片生图不依赖搜索目录。
 
 ## 已连接的聊天侧栏
 
@@ -129,11 +132,10 @@ messages 接口发送 `{"content":"把 ID 为 xxx 的图片设计成公司的风
 会将准确的 `image_id` 填入草稿，不会自动发送。发送后会创建持久化会话并提交任务。
 侧栏打开时每两秒读取消息、任务状态和生成图片。刷新后可从 Conversation 选择历史会话。
 结果支持下载和选作后续编辑对象，取消和失败状态会保留。请求响应丢失后的重试使用相同
-幂等键，避免重复提交。品牌说明和参考图片仍在 Image Studio 配置。
+幂等键，避免重复提交。Image Studio 的 `/create` 页面配置六项品牌设计字段。
 
 规划和评估通过 GenerateContent 的 JSON Schema 字段传递严格的 Pydantic 契约。
 更新后端代码后需重启 API 和 worker，已运行的进程不会自动加载 provider 修复。
-
 
 聊天执行端同时接受图片 UUID 和 `co41679` 这样的藏品记录 ID。可信网关通过
 `DATABASE_URL` 在 PostgreSQL 的当前 ready 索引中精确查询 `record_uid`，返回全部
@@ -141,12 +143,11 @@ messages 接口发送 `{"content":"把 ID 为 xxx 的图片设计成公司的风
 目录不可用与当前索引未收录使用不同错误。导入图片保留原始记录 ID、UUID 和版权信息。
 在线读取图片时，网关仍需要数据库连接来解析藏品 ID。更新后重启 API 和 worker。
 
-
 ## 品牌设计模板
 
 `/create` 仅保留品牌名称、描述、配色、个性、字体和插画风格六个字段，生图在聊天中进行。
 提示词集中在 `backend/app/prompts/image_agent.yaml`，聊天、规划、生图和评估都会收到六项
-品牌信息。旧品牌的新增字段默认为空；旧版 API 字段保留兼容，页面不再显示。
+品牌信息。
 参阅[设计师提示词指南](brand_prompts.CN.md)。
 
 ### 生图完成后的评估失败
@@ -161,5 +162,5 @@ messages 接口发送 `{"content":"把 ID 为 xxx 的图片设计成公司的风
 仍使用 `outcome_unknown`。旧模型返回 404 时，检查 `.env` 中的 `AGENT_MODEL` 和
 `AGENT_EVALUATION_MODEL`；修改后重启 API 和 worker。
 
-在线取图允许图片文件接口一次 307 跳转到配置的 R2 HTTPS 端点和存储桶，保留大小限制，
-不向存储服务转发图片 API 的认证信息。其他目标或再次跳转会被拒绝。
+云端生成素材保存在独立的私有 HF bucket。配置 `AGENT_STORAGE=hf`、
+`AGENT_HF_BUCKET` 和 `AGENT_HF_TOKEN`；工作进程与网关共用存储，任务进程 不接收 HF 凭证。

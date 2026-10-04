@@ -1,13 +1,6 @@
 import math
-from threading import Lock
 
-import httpx
-import logfire
-from google import genai
-from google.genai import types
-from google.genai.errors import APIError
-
-from app.core.config import Settings
+from app.core.config import SIGLIP_MODEL, Settings
 
 
 class SearchError(Exception):
@@ -29,115 +22,9 @@ def normalize(vector: list[float], dimensions: int) -> list[float]:
     return [value / norm for value in vector]
 
 
-class GeminiEmbeddings:
-    def __init__(self, settings: Settings):
-        self.settings = settings
-        self.client = None
-        self._client_lock = Lock()
+def create_embeddings(settings: Settings):
+    if settings.embedding_model == SIGLIP_MODEL:
+        from app.services.siglip_embeddings import SiglipEmbeddings
 
-    def close(self):
-        if self.client:
-            self.client.close()
-
-    def embed(
-        self,
-        *,
-        text: str | None = None,
-        image: bytes | None = None,
-        mime_type: str = "image/jpeg",
-    ) -> list[float]:
-        with logfire.span(
-            "gemini.embed",
-            model=self.settings.embedding_model,
-            dimensions=self.settings.embedding_dimensions,
-            input_kind="image" if image is not None else "text",
-        ):
-            return self._embed(text=text, image=image, mime_type=mime_type)
-
-    def _embed(
-        self,
-        *,
-        text: str | None = None,
-        image: bytes | None = None,
-        mime_type: str = "image/jpeg",
-    ) -> list[float]:
-        content = (
-            types.Content(
-                parts=[types.Part.from_bytes(data=image, mime_type=mime_type)]
-            )
-            if image is not None
-            else f"task: search result | query: {text}"
-        )
-        return self._request(content, expected_count=1)[0]
-
-    def embed_images(self, images: list[tuple[bytes, str]]) -> list[list[float]]:
-        """Return one vector per image, preserving input order in a single request."""
-        if not images:
-            return []
-        contents = [
-            types.Content(parts=[types.Part.from_bytes(data=data, mime_type=mime)])
-            for data, mime in images
-        ]
-        with logfire.span(
-            "gemini.embed",
-            model=self.settings.embedding_model,
-            dimensions=self.settings.embedding_dimensions,
-            input_kind="image",
-            batch_size=len(images),
-        ):
-            return self._request(contents, expected_count=len(images))
-
-    def _request(self, contents, *, expected_count: int) -> list[list[float]]:
-        if not self.settings.gemini_api_key:
-            raise SearchError(
-                "Configure GEMINI_API_KEY in the backend environment.",
-                "missing_api_key",
-            )
-        with self._client_lock:
-            if self.client is None:
-                self.client = genai.Client(
-                    api_key=self.settings.gemini_api_key.get_secret_value(),
-                    http_options=types.HttpOptions(
-                        timeout=20000, retry_options=types.HttpRetryOptions(attempts=1)
-                    ),
-                )
-        try:
-            result = self.client.models.embed_content(
-                model=self.settings.embedding_model,
-                contents=contents,
-                config=types.EmbedContentConfig(
-                    output_dimensionality=self.settings.embedding_dimensions
-                ),
-            )
-        except (APIError, httpx.HTTPError, OSError) as error:
-            code = getattr(error, "code", None)
-            if code == 429:
-                raise SearchError(
-                    "Gemini quota is temporarily exhausted. Try again later.",
-                    "embedding_quota",
-                    429,
-                ) from None
-            if "timeout" in type(error).__name__.lower():
-                raise SearchError(
-                    "The embedding request timed out. Try again.",
-                    "embedding_timeout",
-                    504,
-                ) from None
-            if code in (400, 401, 403, 404):
-                raise SearchError(
-                    "Gemini rejected the embedding request. Check the key, model access, and billing.",
-                    "embedding_configuration",
-                ) from None
-            raise SearchError(
-                "The Gemini embedding service is unavailable. Try again.",
-                "embedding_unavailable",
-            ) from None
-        if not result.embeddings or len(result.embeddings) != expected_count:
-            raise SearchError(
-                "Gemini returned an unexpected number of embeddings.",
-                "invalid_embedding",
-            )
-        return [
-            normalize(embedding.values, self.settings.embedding_dimensions)
-            for embedding in result.embeddings
-        ]
+        return SiglipEmbeddings(settings)
+    raise ValueError("Unsupported EMBEDDING_MODEL. Use SigLIP 2 Base.")

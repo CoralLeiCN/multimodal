@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Collection image search API and ingestion service"
 requires-python = ">=3.12"
 dependencies = [
-    "boto3>=1.40,<2",
+    "huggingface-hub>=1.33,<2",
     "fastapi>=0.115,<1",
     "uvicorn>=0.34,<1",
     "pydantic>=2.10,<3",
@@ -13,15 +13,18 @@ dependencies = [
     "alembic>=1.14,<2",
     "psycopg[binary]>=3.2,<4",
     "qdrant-client==1.19.1",
-    "google-genai>=2.24.0",
+    "torch==2.14.0",
+    "torchvision==0.29.0",
+    "transformers==5.17.0",
     "pillow>=11,<13",
     "python-multipart>=0.0.20,<1",
     "httpx>=0.28,<1",
-    "modal>=1.0,<2",
-    "logfire[fastapi,google-genai]>=4.41,<5",
-    "opentelemetry-proto>=1.30,<2",
-    "pyyaml>=6,<7",
+    "logfire[fastapi]>=4.41,<5",
 ]
+
+[project.optional-dependencies]
+web = ["openai-codex==0.160.0", "mcp>=1.26,<2", "pyjwt>=2.10,<3"]
+agent = ["openai>=2,<3", "google-genai>=2.24.0", "opentelemetry-proto>=1.30,<2", "pyyaml>=6,<7"]
 
 [build-system]
 requires = ["hatchling"]

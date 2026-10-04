@@ -14,30 +14,48 @@ This project uses the `with_CC_images` exports from the
 
 The spelling `thumnail` is the extracted directory's actual name.
 
-## R2 image copies
+## Image storage
 
-The medium thumbnails have also been copied to the private Cloudflare R2 bucket
-`smg-images`, preserving paths relative to `data/images/`. Object keys start with
-`smg_all_medium_thumnail_images_09_04_2025/`; there is no extra `images/` prefix.
-The upload verified 149,232 JPEGs totaling 2,159,639,760 bytes against local
-checksums. Local originals and their per-image rights metadata are retained.
+Hugging Face Storage Buckets are the hosted image store. The first local preview
+uses 100 images through a read-only bind mount; the private hosted bucket still
+needs to be provisioned and populated. Preserve each file's bytes and path relative
+to `data/images/`, including the `smg_all_medium_thumnail_images_09_04_2025/` directory.
+The source inventory contains 149,232 JPEGs totaling 2,159,639,760 bytes.
 
-The PostgreSQL catalogue's nullable `images.r2_url` stores a permanent,
-URL-encoded S3 object URL. With R2 configured, indexing derives this URL from
-the local relative path and optional prefix, trusting the completed migration
-without contacting R2. Embeddings still use local bytes. The optional linking
-command can audit remote SHA-256 metadata. This is not a public or expiring URL.
-The original `location`, `relative_path`, and image IDs keep their source meaning.
-After checking active catalogue membership, the image endpoint first serves
-the file at `IMAGE_ROOT/relative_path` (default root `data/images/`). If the file
-is missing and R2 is configured, it uses the stored reference to generate
-a five-minute signed GET URL. The
-API reuses signatures for four minutes and requests private browser caching of
-image bytes for five minutes; the bucket remains private. Image
-bytes load directly from the private bucket, with attribution retained in the
-app. Missing local files without an R2 link or configuration return 404.
-Only indexed catalogue rows receive links; uploading an image does not index it.
-See [R2 catalogue links](backend/README.md#r2-catalogue-links) for the mapping rule and optional audit command.
+The image endpoint checks active catalogue membership and serves
+`IMAGE_ROOT/relative_path` with private browser caching for five minutes. Missing
+files return 404. Paths and symlinks must stay inside the configured root. The
+catalogue retains image IDs, checksums, source locations, associations, and rights
+metadata. Uploading a file to the bucket does not add it to the search index.
+
+See [mounted image storage](backend/README.md#mounted-image-storage) and the
+[HF deployment guide](docs/huggingface_spaces.md#image-storage) for configuration.
+
+## Planned Hugging Face dataset publication
+
+A later release will publish the collection datasets in Hugging Face dataset
+repositories. Publication is planned; the export and upload workflow has not
+been implemented. The first hosted release is a public search Space, starting
+with the locally validated 100-image sample.
+
+Prepare reproducible releases containing collection metadata and the selected
+image files, with source record and image identifiers, catalogue image IDs,
+relative paths, SHA-256 checksums, and record–image associations. Preserve the
+per-image licence, copyright, credit, source links, and any modification notes
+under the existing reuse rules below. The eleven-column gold Parquet needs
+these rights and association fields joined from bronze or the image manifest.
+
+Each release should include a [dataset card](https://huggingface.co/docs/hub/datasets-cards)
+describing sources, processing, selection, schema, and the applicable metadata
+and image licences. Choose and validate an
+[HF image dataset format](https://huggingface.co/docs/hub/datasets-image) when
+building the exporter, including a working image preview and download path.
+
+Record the published dataset revision alongside the matching search generation.
+The app's mounted HF bucket can contain the same selected image bytes and paths;
+PostgreSQL and Qdrant remain the runtime catalogue and vector index. Dataset
+publication and public image delivery are separate release choices. Public
+downloads must resolve without exposing credentials for the app's private bucket.
 
 ## Local processing
 
@@ -214,11 +232,15 @@ back the complete selection update. JSONL snapshots stream from batched catalogu
 reads and replace the previous file only after successful completion.
 Cached vectors stay in the separate local
 `SEARCH_DATA_DIR/embedding_cache.sqlite3` database; `SEARCH_DATA_DIR` defaults to
-`data/search/`. Existing cache files are reused during indexing. Batched Gemini
-requests retain a separate vector and cache entry per distinct image checksum
+`data/search/`. Existing cache files are reused during indexing. Embedding
+batches retain a separate vector and cache entry per distinct image checksum
 and embedding configuration; batching does not combine image representations.
-See the [import guide](backend/README.md#import-an-existing-sqlite-catalogue) for importing
-an existing legacy catalogue.
+The default SigLIP 2 model processes images locally. Its pinned revision and
+preprocessing participate in the configuration fingerprint. Changing the embedding
+configuration requires re-embedding into a separate Qdrant collection while
+preserving source IDs, licences, attribution, and associations. Moving image
+storage while preserving the same bytes and relative paths does not itself
+require new vectors.
 
 ## Operational tracing
 
@@ -234,28 +256,24 @@ cloud export.
 
 `DATABASE_URL` is required. Neon PostgreSQL holds the image catalogue,
 record associations, source labels, attribution, index generations, ingestion
-ledger, and active generation. There is no SQLite catalogue fallback.
+ledger, and active generation.
 Qdrant retains vectors and filter payloads. Image bytes, original exports, local
 embedding cache, and generated reports remain outside PostgreSQL.
 
-The [Neon migration](docs/neon_setup.md) copies a schema-0003 SQLite catalogue
-into an empty PostgreSQL catalogue in one transaction, preserving all catalogue
-fields and identifiers. It validates the source, verifies its active Qdrant
-collection, and compares every copied table's contents before committing.
-It neither generates embeddings nor updates Qdrant. Original files remain intact.
+Connection and maintenance instructions are in
+[Neon collaboration](backend/README.md#neon-collaboration).
 
 ## Agent inputs and generated assets
 
 Brand reference uploads, subject uploads, and generated images are separate from
-the official collection layers and search index. Cloud agent assets use private
-object storage; local preparation and tests use ignored `data/agent/assets/`.
+the official collection layers and search index. Cloud agent assets use a separate private HF Storage Bucket; local preparation and tests use ignored `data/agent/assets/`.
 Each asset records its checksum, MIME type, dimensions, workspace, and source.
 Generated assets record the run, step, generation model, and reference asset IDs.
 Immutable brand versions retain their uploaded reference IDs.
 
 Agent tasks use a separate PostgreSQL database in production, with SQLite only for
 local preparation and tests. Task inputs, checkpoints, evaluations, and provider
-usage records persist there; the sandbox filesystem is temporary. Chat turns can
+usage records persist there; the task process working directory is temporary. Chat turns can
 import a collection image explicitly requested by ID into private agent storage.
 The bridge preserves source rights metadata; it does not implement a rights-approval
 workflow. Operators must use assets authorized for their intended purpose.
@@ -264,20 +282,19 @@ Only task metadata is exported to tracing by default. Unreferenced task objects 
 than 24 hours may be cleaned up; referenced inputs and outputs are retained. See
 [Image Studio setup](docs/image_agent_setup.md) for storage and execution limits.
 
-
 ## Conversation image references
 
-The sandbox requests search `image_id` resolution through the trusted gateway.
-The gateway uses read-only SQLite for the active local catalogue, or the configured
-online collection API. Online responses are bounded and downloaded from fixed API
-routes without following redirects. It checks the local path and checksum, copies the
-image into private agent storage, and retains the collection generation, record/image
-identifiers, title, licence, copyright, and credit. Generated outputs link their
+The task process requests search `image_id` resolution through the trusted gateway.
+The gateway reads the active PostgreSQL generation or a configured trusted
+collection API. Direct reads use files from the configured image mount. Online
+reads use fixed API routes and reject redirects. Direct reads verify the catalogue checksum; online reads
+validate the returned image ID and bound the metadata and image responses.
+Imported images retain their source identifiers, title, licence, copyright, and
+credit in private agent storage. Direct imports also record the catalogue generation. Generated outputs link their
 input asset IDs so subsequent edits preserve provenance. This lookup does not assess
 derivative-use permission; the operator must select images authorized for the intended
 use. A policy enforcing rights approval is not part of the current prototype.
 See [Brand chat agent backend](docs/chat_agent_backend.md) for the API and limits.
-
 
 For chat collection-record references (`co…`), the trusted gateway resolves exact
 `image_associations.record_uid` matches through the shared PostgreSQL catalogue.
@@ -285,14 +302,17 @@ It scopes joins to the active ready generation and preserves `requested_record_u
 alongside the resolved image UUID and attribution in imported asset provenance.
 Multiple matching images require user selection; see [collection ID lookup](docs/collection_id_lookup.md).
 
-
 Brand profiles store six designer-facing values: `name`, `description`, `colors`,
 `personality`, `typography`, and `illustration_style`. Profiles remain immutable
 versions in the agent database's JSON column; no catalogue migration is required.
-The last three fields default to empty for older profiles. Existing legacy brand
-fields remain API-compatible but are omitted from new submissions by `/create`.
 The six values are inserted as data into the packaged YAML brand prompt template.
 
-Catalogue schema revision `0004` adds an optional `images.r2_url` string for an
-object-storage URL. Existing records may leave it null. This field does not change
-local image resolution or automatically upload images.
+
+## Private web conversation state
+
+The web companion stores account-owned conversations, run results and upload
+metadata in PostgreSQL `explorer_*` tables. Staged uploads and resumable Codex
+thread state use the private `EXPLORER_STATE_DIR` volume. These files are user
+inputs, separate from the collection's HF image mount and future public dataset.
+They must not be included in dataset publication. Operators must set a retention
+and account deletion policy before public web access.

@@ -17,9 +17,9 @@ INDEX_COMMAND = $(BACKEND_RUN) cronjob/index_images.py $(if $(strip $(LIMIT)),--
 
 .PHONY: help setup \
 	build run backend dev generate-client \
-	qdrant-up qdrant-down preview-index index gold match-images \
+	qdrant-up qdrant-down preview-index index gold match-images migrate \
 	test lint check \
-	agent-api agent-worker agent-test agent-lock agent-deploy
+	agent-api agent-worker agent-test space web web-backend web-dev studio build-web build-studio
 
 help: ## Show commands; start with make setup
 	@awk 'BEGIN {FS = ":.*## "} \
@@ -32,7 +32,7 @@ setup: ## Install locked Python/frontend dependencies and Neon CLI; create .env 
 	$(UV) sync --locked --all-packages
 	$(BUN) install --frozen-lockfile
 	@test -f .env || cp .env.example .env
-	@echo "Set GEMINI_API_KEY in .env before indexing or searching. See README.md for data setup."
+	@echo "Configure PostgreSQL and Qdrant in .env. SigLIP 2 search needs no API key. See README.md for data setup."
 
 ##@ Application
 
@@ -52,6 +52,9 @@ generate-client: ## Regenerate the frontend API client from the backend schema
 	bash scripts/generate-client.sh
 
 ##@ Collection data and indexing
+
+migrate: ## Apply catalogue migrations using the direct PostgreSQL connection
+	$(BACKEND_RUN) alembic -c backend/alembic.ini upgrade head
 
 qdrant-up: ## Start the local vector database (requires Docker)
 	docker compose up -d qdrant
@@ -74,7 +77,7 @@ match-images: ## Create the optional image manifest and coverage report
 ##@ Validation
 
 test: ## Run Python tests; requires a disposable TEST_POSTGRES_URL
-	$(UV) run pytest
+	$(UV) run --all-packages --extra agent --extra web pytest
 
 lint: ## Run Python and frontend lint checks
 	$(UV) run ruff check .
@@ -84,18 +87,34 @@ check: test lint build ## Run Python tests, lint checks, and frontend build
 
 ##@ Image Studio
 
-agent-api: build ## Serve Image Studio independently of collection search
-	$(BACKEND_RUN) uvicorn app.services.agent.application:create_agent_app --factory --host 127.0.0.1 --port $(PORT)
+agent-api: build-studio ## Serve Image Studio independently of collection search
+	$(BACKEND_RUN) --extra agent uvicorn app.services.agent.application:create_agent_app --factory --host 127.0.0.1 --port $(PORT)
 
-agent-worker: ## Process queued image tasks using Modal sandboxes
-	$(BACKEND_RUN) python -m app.services.agent.worker
+agent-worker: ## Process queued image tasks inside the HF Space container
+	$(BACKEND_RUN) --extra agent python -m app.services.agent.worker
 
-agent-test: ## Test agent isolation, budgets, recovery, and API with fake cloud services
-	$(UV) run pytest backend/tests/test_agent.py backend/tests/test_chat.py
+agent-test: ## Test task execution, budgets, recovery, and API with fake model services
+	$(UV) run --all-packages --extra agent --extra web pytest backend/tests/test_agent.py backend/tests/test_chat.py backend/tests/test_process_executor.py backend/tests/test_space.py backend/tests/test_agent_provider.py
 
-agent-lock: ## Export locked dependencies for the Modal images
-	$(UV) export --only-group agent-runtime --no-emit-project --no-hashes --no-header --output-file deploy/agent-requirements.txt
-	$(UV) export --package multimodal-backend --no-dev --no-emit-workspace --no-hashes --no-header --output-file deploy/service-requirements.txt
+space: build ## Serve the search edition on port 7860
+	$(BACKEND_RUN) uvicorn app.main:app --host 127.0.0.1 --port 7860
 
-agent-deploy: build ## Deploy configured cloud creation services to Modal
-	$(BACKEND_RUN) modal deploy deploy/modal_app.py
+##@ Collection companion (web)
+
+build-web: ## Build search plus the collection companion
+	$(BUN) run --cwd frontend build:web
+
+web: build-web ## Serve the web edition with private Codex workers (one API process)
+	EXPLORER_GATEWAY_URL=http://127.0.0.1:$(PORT) $(BACKEND_RUN) --extra web uvicorn app.web:app --host 127.0.0.1 --port $(PORT)
+
+web-backend: ## Run the web API with reload; use make web-dev in another terminal
+	EXPLORER_PUBLIC_URL=http://127.0.0.1:5173 $(BACKEND_RUN) --extra web uvicorn app.web:app --reload --host 127.0.0.1 --port 8000
+
+web-dev: ## Run the web edition in Vite
+	$(BUN) run --cwd frontend dev:web
+
+build-studio: ## Build the deferred Image Studio prototype
+	$(BUN) run --cwd frontend build:studio
+
+studio: build-studio ## Serve the separate Image Studio prototype and its optional worker
+	$(BACKEND_RUN) --extra agent python -m app.space

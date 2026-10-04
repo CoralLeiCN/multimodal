@@ -1,4 +1,4 @@
-"""Sandbox executor: resolve the compiled source, generate, check, and return artifacts."""
+"""Task executor: resolve the compiled source, generate, check, and return artifacts."""
 
 import httpx
 import logfire

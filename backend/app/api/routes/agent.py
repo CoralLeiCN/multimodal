@@ -30,13 +30,12 @@ from app.agent_runtime.contracts import (
     RunInput,
     ToolRequest,
 )
-from app.core.telemetry import accept_trace
 from app.services.agent.auth import sign, verify
 from app.services.agent.chat import ChatService
 from app.services.agent.gateway import Gateway
-from app.services.agent.provider import GeminiProvider
 from app.services.agent.service import TERMINAL
 from app.services.agent.storage import AgentError
+from app.services.agent.telemetry import accept_trace
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -325,7 +324,9 @@ def _provider(svc):
         provider = getattr(svc, "provider", None)
         owned = provider is None
         if owned:
-            provider = GeminiProvider(svc.settings)
+            from app.services.agent.provider import AgentProvider
+
+            provider = AgentProvider(svc.settings)
         try:
             yield provider
         finally:

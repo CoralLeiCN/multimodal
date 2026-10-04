@@ -1,4 +1,4 @@
-"""Entry point for Modal. All decisions happen here; paid tools use the gateway."""
+"""Entry point for the Space task process. All decisions happen here; paid tools use the gateway."""
 
 import os
 import threading
@@ -115,7 +115,7 @@ def main():
     )
     logfire.configure(
         send_to_logfire=False,
-        service_name="image-agent-sandbox",
+        service_name="image-agent-executor",
         console=False,
         inspect_arguments=False,
         additional_span_processors=[
@@ -140,7 +140,7 @@ def main():
     thread = threading.Thread(target=heartbeat, daemon=True)
     thread.start()
     try:
-        # The worker must persist the sandbox ID before its first authorized call.
+        # The worker must persist the execution ID before its first authorized call.
         for _ in range(60):
             try:
                 client.get("manifest")

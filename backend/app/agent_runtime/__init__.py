@@ -1,1 +1,1 @@
-"""Portable agent runtime copied into a Modal sandbox without backend credentials."""
+"""Trusted agent runtime executed as a child process in the HF Space."""

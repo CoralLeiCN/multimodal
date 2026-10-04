@@ -9,9 +9,10 @@ def test_prepare_only_saves_selection_without_external_calls(setup, monkeypatch)
     monkeypatch.setattr(index_images, "select_images", lambda *args: (selected, report))
 
     def forbidden(*_args):
-        raise AssertionError("prepare-only must not construct a vector client")
+        raise AssertionError("prepare-only must not construct an embedding or vector client")
 
     monkeypatch.setattr(index_images, "VectorStore", forbidden)
+    monkeypatch.setattr(index_images, "create_embeddings", forbidden)
     assert index_images.main(["--prepare-only", "--limit", "3"]) == 0
 
 
@@ -52,7 +53,7 @@ def test_large_selection_limits_reach_sampler(monkeypatch):
 
     monkeypatch.setattr(index_images, "Settings", Mock())
     monkeypatch.setattr(index_images, "configure_telemetry", Mock())
-    monkeypatch.setattr(index_images, "GeminiEmbeddings", Mock())
+    monkeypatch.setattr(index_images, "create_embeddings", Mock())
     monkeypatch.setattr(index_images, "ingestion_lock", lambda *a, **k: nullcontext())
     monkeypatch.setattr(index_images, "select_images", select_sample)
     assert (
@@ -69,7 +70,7 @@ def test_resume_accepts_batch_size_and_uses_it_for_requests(setup, monkeypatch):
     monkeypatch.setattr(index_images, "Settings", lambda: settings)
     monkeypatch.setattr(index_images, "make_engine", lambda _: engine)
     monkeypatch.setattr(index_images, "migrate", lambda _: None)
-    monkeypatch.setattr(index_images, "GeminiEmbeddings", lambda _: embeddings)
+    monkeypatch.setattr(index_images, "create_embeddings", lambda _: embeddings)
     monkeypatch.setattr(index_images, "VectorStore", lambda _: vectors)
     monkeypatch.setattr(vectors, "close", lambda: None)
     sizes = []
@@ -102,7 +103,7 @@ def saved_cli(setup, monkeypatch):
     monkeypatch.setattr(index_images, "Settings", lambda: settings)
     monkeypatch.setattr(index_images, "make_engine", lambda _: engine)
     monkeypatch.setattr(index_images, "migrate", lambda _: None)
-    monkeypatch.setattr(index_images, "GeminiEmbeddings", lambda _: embeddings)
+    monkeypatch.setattr(index_images, "create_embeddings", lambda _: embeddings)
     monkeypatch.setattr(index_images, "VectorStore", lambda _: vectors)
     monkeypatch.setattr(vectors, "close", lambda: None)
     return setup
@@ -161,6 +162,7 @@ def test_no_limit_rejects_missing_or_ambiguous_selection(
 
     monkeypatch.setattr(index_images, "select_images", forbidden)
     monkeypatch.setattr(index_images, "VectorStore", forbidden)
+    monkeypatch.setattr(index_images, "create_embeddings", forbidden)
     assert index_images.main([]) == 2
     assert "Multiple saved selections" in capsys.readouterr().err
     settings.qdrant_collection_name = "no-saved-selection"

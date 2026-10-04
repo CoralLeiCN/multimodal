@@ -628,9 +628,6 @@
               }
             },
             "description": "Gateway Timeout"
-          },
-          "307": {
-            "description": "Temporary redirect to a signed private R2 image URL"
           }
         }
       }
@@ -2362,6 +2359,18 @@
       },
       "StatusResponse": {
         "properties": {
+          "embedding_provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "local"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Provider"
+          },
           "status": {
             "type": "string",
             "title": "Status"
