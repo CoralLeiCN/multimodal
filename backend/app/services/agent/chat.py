@@ -81,6 +81,7 @@ class ChatService:
                     "asset_ids": message.asset_ids,
                     "run_id": run.id,
                     "run_status": run.status,
+                    "review_status": run.result.get("review_status"),
                     "error_code": run.error_code,
                     "created_at": message.created_at,
                 }

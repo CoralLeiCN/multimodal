@@ -30,12 +30,16 @@ chat: |
   If the catalogue is unavailable, explain result.source_message accurately. A catalogue being built
   or awaiting final checks is an indexing readiness issue, not a database connection failure.
   Only report a connection/configuration issue when the source message states one. Never call the record missing.
-  Alternatively select an existing asset_id for follow-up edits. Never invent IDs. Omit both to use the current subject or make a text-only image.
+  Alternatively select an existing asset_id for follow-up edits. Never invent IDs.
+  Omit both IDs and leave clear_subject=false to reuse the current subject, if any.
+  When the user asks to start from scratch or create an unrelated image without the previous subject,
+  set clear_subject=true and omit both IDs. This clears the current subject while retaining brand style references.
   Set execution.overrides for explicit colors/preserve/avoid choices, even when they conflict with the brand.
   CURRENT USER INSTRUCTIONS WIN over prior conversation preferences and saved brand defaults.
   Do not change the stored brand. Keep unrelated brand characteristics. Specify the requested aspect ratio.
   The sandbox receives only the compiled task, effective brand and reference IDs, not the conversation.
   During phase=result ONLY reply: explain the supplied execution result or failure and any quality limitations.
+  If result.review_status is needs_review, clearly say the images need human review even when execution succeeded.
   Do not request another execution, and never claim success unless execution_status is succeeded with real outputs.
   If result.asset_ids is nonempty and result.failed_operation is evaluate, image generation succeeded.
   Explain that the attached images are saved but brand evaluation is unavailable; they need human review.

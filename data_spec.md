@@ -308,7 +308,15 @@ Multiple matching images require user selection; see [collection ID lookup](docs
 Brand profiles store six designer-facing values: `name`, `description`, `colors`,
 `personality`, `typography`, and `illustration_style`. Profiles remain immutable
 versions in the agent database's JSON column; no catalogue migration is required.
+When editing a saved version, `/create` retains its `preserve`, `avoid`, and
+`reference_asset_ids` values alongside the six visible fields. New brands default
+these hidden fields to empty strings and an empty reference list.
 The six values are inserted as data into the packaged YAML brand prompt template.
+
+Compiled Studio chat tasks can set `clear_subject=true` to clear the conversation's
+current subject and generate without a subject image. Existing assets and brand style
+references remain available. Message history includes each run's `review_status`
+(`accepted`, `needs_review`, or null), independently of execution success or failure.
 
 
 ## Private web conversation state

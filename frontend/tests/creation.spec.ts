@@ -32,7 +32,7 @@ for (const width of [1280, 390]) {
     for (let i=0;i<labels.length;i++) await page.getByLabel(labels[i],{exact:true}).fill(Object.values(values)[i])
     await page.getByRole('button',{name:'Save brand',exact:true}).click()
     await expect(page.getByRole('status')).toContainText('Brand saved')
-    expect(submissions[0]).toEqual(values)
+    expect(submissions[0]).toEqual({...values,preserve:'',avoid:'',reference_asset_ids:[]})
     await page.getByLabel('Saved brands').selectOption('')
     await page.getByLabel('Saved brands').selectOption('v1')
     await expect(page.getByLabel('Typography',{exact:true})).toHaveValue(values.typography)
@@ -60,4 +60,35 @@ test('loads an older brand and keeps edits when saving fails',async({page})=>{
   await page.getByRole('button',{name:'Save brand changes'}).click()
   await expect(page.getByRole('alert')).toContainText('Storage unavailable')
   await expect(page.getByLabel('Illustration style',{exact:true})).toHaveValue('Hand-drawn lines')
+})
+
+test('retains hidden brand fields from the selected version across edits', async ({ page }) => {
+  const original = { id: 'v1', brand_id: 'brand', version: 1, name: 'Legacy', description: 'Existing description', colors: 'Green', preserve: 'Keep the silhouette', avoid: 'No lettering', reference_asset_ids: ['original-reference'] }
+  const latest = { ...original, id: 'v2', version: 2, preserve: 'Keep the texture', reference_asset_ids: ['latest-reference'] }
+  let profiles = [latest, original]
+  const submissions: Record<string, unknown>[] = []
+  await page.route('**/api/v1/agent/status', r => r.fulfill({ json: { enabled: true, authenticated: true, ready: true } }))
+  await page.route('**/api/v1/agent/brands', r => r.fulfill({ json: profiles }))
+  await page.route('**/api/v1/agent/brands/brand/versions', r => {
+    const body = r.request().postDataJSON()
+    submissions.push(body)
+    const saved = { ...body, id: `v${profiles.length + 1}`, brand_id: 'brand', version: profiles.length + 1 }
+    profiles = [saved, ...profiles]
+    return r.fulfill({ status: 201, json: saved })
+  })
+  await page.goto('/create')
+  await page.getByLabel('Saved brands').selectOption('v1')
+  for (const description of ['First edit', 'Second edit']) {
+    await page.getByLabel('Brand description', { exact: true }).fill(description)
+    await page.getByRole('button', { name: 'Save brand changes' }).click()
+    await expect(page.getByRole('status')).toContainText('Brand saved')
+    expect(submissions.at(-1)).toMatchObject({ description, preserve: original.preserve, avoid: original.avoid, reference_asset_ids: original.reference_asset_ids })
+  }
+  await page.reload()
+  await page.getByLabel('Saved brands').selectOption('v4')
+  await expect(page.getByLabel('Brand description', { exact: true })).toHaveValue('Second edit')
+  await page.getByLabel('Brand name', { exact: true }).fill('Renamed brand')
+  await page.getByRole('button', { name: 'Save brand changes' }).click()
+  await expect(page.getByRole('status')).toContainText('Brand saved')
+  expect(submissions.at(-1)).toMatchObject({ preserve: original.preserve, avoid: original.avoid, reference_asset_ids: original.reference_asset_ids })
 })

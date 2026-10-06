@@ -10,6 +10,9 @@ const emptyProfile = {
   personality: "",
   typography: "",
   illustration_style: "",
+  preserve: "",
+  avoid: "",
+  reference_asset_ids: [] as string[],
 }
 const fields = [
   { key: "name", label: "Brand name", placeholder: "e.g. Fieldwork Studio", max: 100 },
@@ -90,6 +93,9 @@ export function CreationStudio() {
             personality: brand.personality || "",
             typography: brand.typography || "",
             illustration_style: brand.illustration_style || "",
+            preserve: brand.preserve || "",
+            avoid: brand.avoid || "",
+            reference_asset_ids: brand.reference_asset_ids || [],
           }
         : emptyProfile,
     )

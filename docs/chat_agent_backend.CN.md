@@ -51,7 +51,7 @@ colors、preserve、avoid 的明确覆盖会合并到任务里，未指定的品
 | --- | --- |
 | `POST /api/v1/agent/conversations` | 使用 `brand_version` 与可选 `title` 创建会话 |
 | `GET /api/v1/agent/conversations` | 按最近活动列出最多 100 个会话 |
-| `GET /api/v1/agent/conversations/{id}` | 读取消息、每轮状态／错误、附件及来源 |
+| `GET /api/v1/agent/conversations/{id}` | 读取消息、每轮状态／错误与 `review_status`、附件及来源 |
 | `POST /api/v1/agent/conversations/{id}/messages` | 提交 `content` 和可选 `subject_asset_id`；必须带 `Idempotency-Key`；返回 202、消息 ID 与 run |
 | `GET /api/v1/agent/runs/{run_id}/events` | SSE 进度，支持 Last-Event-ID 重连；回复发布时产生 assistant_message |
 | `GET /api/v1/agent/runs/{run_id}` | 轮询状态，或查看失败前已完成的图片 |
@@ -63,6 +63,9 @@ colors、preserve、avoid 的明确覆盖会合并到任务里，未指定的品
 工作空间最多一个活动任务进程。每会话最多 20 条用户消息，每轮一次 harness 需求整理、最多一次 harness 结果回复，
 执行任务最多 1 张初始图和 1 次修订；上下文不静默截断。澄清问题是普通助手消息，回答作为下一轮。
 成功生成的最后一张图成为下一轮默认主体，显式选图可以覆盖它。
+用户明确要求从头生成、不要沿用上一张图时，聊天模型设置 `execution.clear_subject=true`，
+并省略 `image_id` 和 `asset_id`。协调器在提交任务前清除会话当前主体，保留品牌风格参考图
+和历史素材。普通后续编辑默认 `clear_subject=false`；清除主体不能与显式来源 ID 同时使用。
 
 ## 图片 ID 与来源
 
@@ -133,7 +136,9 @@ Agent 读取 `.env` 和 `.env.local`，后者优先。上传图片生图不依�
 会将准确的 `image_id` 填入草稿，不会自动发送。发送后会创建持久化会话并提交任务。
 侧栏打开时每两秒读取消息、任务状态和生成图片。刷新后可从 Conversation 选择历史会话。
 结果支持下载和选作后续编辑对象，取消和失败状态会保留。请求响应丢失后的重试使用相同
-幂等键，避免重复提交。Image Studio 的 `/create` 页面配置六项品牌设计字段。
+幂等键，避免重复提交。明确的 `queue_full`（429）或 `not_configured`（503）拒绝会解除
+提交锁定，用户可以编辑草稿或切换会话。不确定的服务错误仍保留原请求内容和幂等键。
+Image Studio 的 `/create` 页面配置六项品牌设计字段。
 
 规划和评估使用 OpenAI 客户端的 Chat Completions 解析接口和 Pydantic 响应契约。
 Gemini 仅用于图片生成。
@@ -149,7 +154,8 @@ Gemini 仅用于图片生成。
 
 `/create` 仅保留品牌名称、描述、配色、个性、字体和插画风格六个字段，生图在聊天中进行。
 提示词集中在 `backend/app/prompts/image_agent.yaml`，聊天、规划、生图和评估都会收到六项
-品牌信息。
+品牌信息。编辑保存时，新版本保留所选版本的 `preserve`、`avoid` 和
+`reference_asset_ids`；这些字段由 API 接受，页面不显示。
 参阅[设计师提示词指南](brand_prompts.CN.md)。
 
 ### 生图完成后的评估失败
@@ -157,6 +163,8 @@ Gemini 仅用于图片生成。
 评估失败时，已保存的候选图片仍附在聊天中，并保留下载和编辑入口。页面标注
 “Needs review · Not approved”，不会把这些图片当作通过评估，也不会自动付费重试。
 聊天提示词明确区分“生图成功”和“评估失败”。
+消息记录包含 `review_status`：`accepted`、`needs_review` 或空值。即使执行成功，若用完
+修订次数后最终评估仍要求修改，页面也会显示人工审查提示；刷新历史会话后该提示继续显示。
 
 模型调用失败时，在调用记录、任务结果、服务日志和 Logfire 中记录操作、模型名、
 异常类型和 HTTP 状态码，不记录原始报错或图片内容。404 使用
