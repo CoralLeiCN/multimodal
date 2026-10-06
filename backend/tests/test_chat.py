@@ -5,7 +5,12 @@ from concurrent.futures import ThreadPoolExecutor
 import httpx
 import pytest
 from app.agent_models import Call
-from app.agent_runtime.contracts import ConversationInput, MessageInput, ToolRequest
+from app.agent_runtime.contracts import (
+    ConversationInput,
+    ExecutionRequest,
+    MessageInput,
+    ToolRequest,
+)
 from app.agent_runtime.runner import run_agent
 from app.services.agent.application import create_agent_app
 from app.services.agent.auth import task_token, verify
@@ -132,13 +137,14 @@ def collection(agent, tmp_path):
     return "red"
 
 
-def execute(image_id=None, asset_id=None, colors=None):
+def execute(image_id=None, asset_id=None, colors=None, clear_subject=False):
     return {
         "action": "execute",
         "execution": {
             "prompt": "Preserve the selected subject; use the requested campaign style.",
             "image_id": image_id,
             "asset_id": asset_id,
+            "clear_subject": clear_subject,
             "overrides": {"colors": colors},
         },
     }
@@ -245,6 +251,69 @@ def test_followup_edit_uses_previous_output_as_subject(agent, conversation):
     assert output in provider.inputs[-1][2]
     assert provider.inputs[-1][1]["colors"] == "green"
     assert len(provider.contexts[2]["messages"]) == 3
+
+
+def test_start_from_scratch_clears_subject_and_retains_brand_references(
+    agent, conversation
+):
+    fresh = execute(clear_subject=True)
+    fresh["execution"]["prompt"] = "Create an unrelated abstract pattern from scratch."
+    provider = ChatProvider(
+        [
+            execute(),
+            {"action": "reply", "message": "First image."},
+            fresh,
+            {"action": "reply", "message": "New design."},
+        ]
+    )
+    first, worker = submit(agent, conversation, provider)
+    previous = complete(agent, provider, first, worker)["artifacts"][0]["id"]
+    second, worker = submit(
+        agent, conversation, provider, fresh["execution"]["prompt"], key="fresh"
+    )
+    request = agent[0].read_run(second)["request"]
+    assert request["subject_asset_ids"] == []
+    assert request["execution"]["asset_id"] is None
+    assert conversation[0].read(conversation[1]["id"])["subject_asset_id"] is None
+    result = complete(agent, provider, second, worker)
+    assert previous not in provider.inputs[-1][2]
+    assert provider.inputs[-1][2] == agent[1]["reference_asset_ids"]
+    history = conversation[0].read(conversation[1]["id"])
+    assert previous in {asset["id"] for asset in history["assets"]}
+    assert history["subject_asset_id"] == result["artifacts"][0]["id"]
+
+
+@pytest.mark.parametrize("source", [{"image_id": "co123"}, {"asset_id": "prior"}])
+def test_start_from_scratch_rejects_an_explicit_source(source):
+    with pytest.raises(ValidationError, match="cannot specify a source"):
+        ExecutionRequest(prompt="A new design", clear_subject=True, **source)
+
+
+@pytest.mark.parametrize("action", ["accept", "revise"])
+def test_chat_history_preserves_review_status_after_success(agent, conversation, action):
+    class Reviewer(ChatProvider):
+        def evaluate(self, brief, brand, assets):
+            return {
+                "subject_score": 90 if action == "accept" else 30,
+                "brand_score": 90 if action == "accept" else 30,
+                "request_score": 90 if action == "accept" else 30,
+                "summary": "Review result",
+                "action": action,
+                "revision_prompt": "Improve the composition.",
+            }, None
+
+    provider = Reviewer([execute(), {"action": "reply", "message": "Here is your image."}])
+    run_id, worker = submit(agent, conversation, provider)
+    result = complete(agent, provider, run_id, worker)
+    assert result["status"] == "succeeded"
+    expected = "accepted" if action == "accept" else "needs_review"
+    assert result["review_status"] == expected
+    assert provider.generated == (1 if action == "accept" else 2)
+    svc = agent[0]
+    reopened = ChatService(AgentService(svc.settings, svc.engine))
+    message = reopened.read(conversation[1]["id"])["messages"][-1]
+    assert message["review_status"] == expected
+    assert message["asset_ids"] == [result["artifacts"][0]["id"]]
 
 
 def test_missing_image_returns_execution_failure_to_chat(
@@ -717,6 +786,7 @@ def test_evaluation_rejection_preserves_image_and_safe_diagnostics(
     worker.tick()
     history = conversation[0].read(conversation[1]["id"])
     assert history["messages"][-1]["asset_ids"] == failed["result"]["asset_ids"]
+    assert history["messages"][-1]["review_status"] == "needs_review"
     assert provider.contexts[-1]["result"]["failed_operation"] == "evaluate"
     assert provider.generated == 1
     assert "private-provider-message" not in caplog.text

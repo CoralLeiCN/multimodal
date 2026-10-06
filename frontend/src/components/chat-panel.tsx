@@ -10,6 +10,7 @@ type Message = {
   asset_ids: string[]
   run_id: string
   run_status: string
+  review_status: "accepted" | "needs_review" | null
   error_code: string | null
 }
 type Conversation = { id: string; title: string; brand_version: string }
@@ -206,7 +207,14 @@ export function ChatPanel({
     } catch (e) {
       if (mounted.current) {
         setError(messageOf(e))
-        if (e instanceof ApiError && [400, 403, 404, 409, 422].includes(e.status)) setRetry(null)
+        // These rejections confirm that no turn was queued. Unknown outcomes keep the retry key.
+        if (
+          e instanceof ApiError &&
+          ([400, 403, 404, 409, 422].includes(e.status) ||
+            (e.status === 429 && e.code === "queue_full") ||
+            (e.status === 503 && e.code === "not_configured"))
+        )
+          setRetry(null)
         if (e instanceof ApiError && e.status === 401) void refresh().catch(() => {})
       }
     } finally {
@@ -385,7 +393,7 @@ export function ChatPanel({
                     : message.content}
                 </p>
                 {message.role === "assistant" &&
-                  message.run_status === "failed" &&
+                  (message.review_status === "needs_review" || message.run_status === "failed") &&
                   message.asset_ids.length > 0 && (
                     <p className="chat-turn-error">Needs review · Not approved</p>
                   )}

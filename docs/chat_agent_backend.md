@@ -49,6 +49,11 @@ If that summary call fails, the backend attaches the real outputs with a fallbac
 message. Successful generation is not lost because the final chat response failed.
 Users continue editing in the same conversation; the last successful image is the
 default subject unless they select another image.
+For an explicit request to start from scratch without the previous subject, the chat
+model sets `execution.clear_subject=true` and omits `image_id` and `asset_id`.
+The coordinator clears the conversation's current subject before queuing that task;
+brand style references and prior assets remain available. `clear_subject` defaults
+to false for ordinary follow-up edits and cannot accompany an explicit source ID.
 
 ### Instruction precedence
 
@@ -86,7 +91,7 @@ assets are scoped to that workspace.
 | --- | --- |
 | `POST /api/v1/agent/conversations` | Create with `brand_version` and optional `title`; returns the conversation ID |
 | `GET /api/v1/agent/conversations` | List up to 100 conversations in the workspace, newest activity first |
-| `GET /api/v1/agent/conversations/{id}` | Read ordered messages, run status/error for each turn, image IDs, file URLs, and provenance |
+| `GET /api/v1/agent/conversations/{id}` | Read ordered messages, run status/error and `review_status` for each turn, image IDs, file URLs, and provenance |
 | `POST /api/v1/agent/conversations/{id}/messages` | Send `content` and optional `subject_asset_id`; requires `Idempotency-Key`; returns HTTP 202 with `message_id` and `run` |
 | `GET /api/v1/agent/runs/{run_id}/events` | SSE progress, resumable with `Last-Event-ID`; `assistant_message` indicates publication |
 | `GET /api/v1/agent/runs/{run_id}` | Poll progress/results or inspect partial output after failure |
@@ -250,6 +255,9 @@ messages and generated assets every two seconds while the sidebar is open. The
 Conversation selector restores prior chats after reload. Results can be downloaded
 or selected as `subject_asset_id` for a follow-up edit. Task errors and cancellation
 remain visible in history; retrying a lost HTTP submission reuses its original key.
+A confirmed `queue_full` (429) or `not_configured` (503) rejection releases the
+submission lock so the user can edit the draft or switch conversations. An uncertain
+server failure keeps the original body and key for retry.
 The `/create` page edits the six brand design fields; image generation happens in chat.
 
 Planning and evaluation use the OpenAI client's Chat Completions parsing API with
@@ -263,7 +271,9 @@ The brand editor stores name, description, colors, personality, typography, and
 illustration style. All model stages receive the six-field brand brief rendered
 from `backend/app/prompts/image_agent.yaml`. This file also owns the common system
 prompt and chat, planning, generation, and evaluation instructions. See
-[the designer guide](brand_prompts.md).
+[the designer guide](brand_prompts.md). The brand form keeps `preserve`, `avoid`,
+and `reference_asset_ids` from the selected version when saving edits; these fields
+remain accepted by the API but are not exposed in the form.
 
 ### Evaluation failures after generation
 
@@ -271,6 +281,10 @@ A saved candidate remains attached to the chat if evaluation fails. The UI marks
 failed tasks with attached images as needing review and keeps download and edit
 controls available. These images are not approved; no automatic paid retry occurs.
 The result prompt distinguishes generation success from evaluation failure.
+Conversation messages include `review_status`: `accepted`, `needs_review`, or null
+when no review status exists. The UI also marks successful runs as needing review
+when their final evaluation still requests revision after the revision budget is used.
+This warning persists when the user reloads the conversation.
 
 Provider errors retain safe diagnostics (operation, model, exception type, HTTP
 status) in the call record, run result, server log, and Logfire warning. Raw error

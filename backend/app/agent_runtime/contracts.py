@@ -108,6 +108,10 @@ class ExecutionRequest(Contract):
     prompt: str = Field(min_length=1, max_length=6000)
     image_id: str | None = Field(default=None, min_length=1, max_length=200)
     asset_id: str | None = Field(default=None, min_length=1, max_length=32)
+    clear_subject: bool = Field(
+        default=False,
+        description="Start from scratch without a subject image; omit image_id and asset_id.",
+    )
     aspect_ratio: Literal["1:1", "4:3", "3:4", "16:9", "9:16"] = "1:1"
     overrides: BrandOverrides = Field(default_factory=BrandOverrides)
 
@@ -115,6 +119,8 @@ class ExecutionRequest(Contract):
     def single_source(self):
         if self.image_id and self.asset_id:
             raise ValueError("Choose one source image")
+        if self.clear_subject and (self.image_id or self.asset_id):
+            raise ValueError("Starting from scratch cannot specify a source image")
         return self
 
 

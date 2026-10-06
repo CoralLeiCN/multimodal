@@ -97,6 +97,7 @@ Brand colors palette, Personality, Typography, and Illustration style. Personali
 is free text (for example, premium, calm, technical, optimistic). Name and description
 are required. The page supports workspace sign-in, saving new brands, and editing
 saved brands as new immutable versions.
+Editing retains the selected version's existing reference images and preserve/avoid rules.
 Generation, task progress, results, and edits are available in collection chat.
 The page has no reference uploads or standalone generation controls.
 
@@ -123,6 +124,13 @@ controls. Use the Conversation selector to restore history after a page reload.
 Closing the panel preserves its draft; the draft itself is not persisted on reload.
 New chat starts a conversation bound to the selected brand on the next send.
 A lost submission response is retried with the same body and idempotency key.
+A confirmed `queue_full` or `not_configured` rejection unlocks the draft and conversation
+selector so users can edit their request or manage other tasks. Uncertain server failures
+retain the original submission key for retry.
+Results with `review_status=needs_review` display a review warning even when generation
+completed successfully; the warning remains visible after reloading history.
+To create a new image without the previous subject in the same conversation, ask chat
+to start from scratch. Brand style references still apply.
 API keys remain on the server, and workspace authentication uses the existing
 HTTP-only cookie. An unavailable backend displays an error instead of a preview reply.
 

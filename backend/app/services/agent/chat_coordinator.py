@@ -226,6 +226,8 @@ class ChatCoordinator:
             return
         request = decision.execution
         row = self.chat.conversation(session, run.request["conversation_id"], True)
+        if request.clear_subject:
+            row.subject_asset_id = None
         asset_id = request.asset_id or (
             row.subject_asset_id if not request.image_id else None
         )
