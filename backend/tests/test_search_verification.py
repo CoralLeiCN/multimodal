@@ -7,8 +7,9 @@ from app.main import create_app
 from app.services import catalogue
 from app.services import search as search_module
 from app.services.embeddings import SearchError
-from app.services.ingestion import create_generation, run_ingestion
+from app.services.ingestion import run_ingestion
 from app.services.search import SearchService
+from conftest import create_generation
 from fastapi.testclient import TestClient
 from qdrant_client import models
 from sqlalchemy import event

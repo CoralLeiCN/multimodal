@@ -115,11 +115,11 @@ flowchart LR
     A --> Q
     A --> M[Indexed image endpoint]
     M --> D
-    M --> H[Read-only HF bucket mount]
+    M --> H[Read-only dataset image cache]
 ```
 
 At startup, the API reads the active index version and its Qdrant collection name
-from the SQL catalogue. It serves image bytes from `IMAGE_ROOT`, the HF bucket
+from the SQL catalogue. It serves image bytes from `IMAGE_ROOT`, the dataset image cache
 mount in the hosted app or a local directory during development. Indexing builds a new generation independently.
 
 The HF and web editions share that catalogue, Qdrant collection and image release.
@@ -151,30 +151,15 @@ explicit `--limit` for the first selection and `--resume RUN_ID` to disambiguate
 Continue prepared or failed generations and verify already-ready generations.
 Verified indexed images skip embedding and vector writes. Selection options,
 including dry runs and preparation, require `--limit`.
-Maintain a bounded sample using a stable hash of the image location and seed 42
-while streaming metadata. Decode only the selected candidates after the scan.
-Failed embedding requests do not cause the selection to grow.
-
-The sampler reads bronze metadata directly and defaults to the object export.
-`data/processed/image_manifest.csv` is an optional audit output.
-
-For bronze selection, reuse the streaming record parser and metadata conventions
-in [the matching script](../cronjob/match_images.py). Resolve each medium thumbnail
-location against explicitly configured extraction roots, including the current
-root `data/images/smg_all_medium_thumnail_images_09_04_2025/`. Test the complete
-relative path under each root; multiple matches are ambiguous. Check containment
-after resolving symlinks, and reject traversal or ambiguous paths.
-
-Process configured source files in their supplied order and records in source order. Retain selected
-record–image associations, including repeated references encountered before the
-scan stops. Deduplicate vectors by normalized image location. This selection is a
-repeatable development sample; it does not establish coverage of the collection.
-
-Decode and validate selected images individually. Skip missing, corrupt,
-unsupported, or unresolved-rights entries with a recorded reason. Use the
-per-image rights fields and [the project's data guidance](../data_spec.md) when
-selecting content for the intended use. Preserve supplied field values, including
-empty strings and original licence spelling.
+Maintain a bounded sample using a stable hash of source image location and seed
+42 while reading the prepared Hugging Face `catalogue` configuration. Configure
+`HF_DATASET_ID` and a full commit `HF_DATASET_REVISION`, or `HF_DATASET_PATH` for
+an already-built local package. Verify catalogue shard hashes before use.
+`--scan-limit` counts prepared image rows. Each row includes all its eligible
+source associations. Cache selected original bytes at their content-addressed
+relative paths under `IMAGE_ROOT`; verify their hashes and enforce app image-size
+limits. Source matching, rights selection, date extraction and normalization are
+owned by `smg-datasets`. See [the consumption contract](../data_processing_spec.md).
 
 Save the selected catalogue in SQL batches of up to 500 images, with association
 inserts capped at 500 rows per statement. Keep all batches in one transaction so
@@ -190,9 +175,9 @@ rows, regenerating the snapshot. Read metadata incrementally and decode at most 
 configured number of concurrent images. The full metadata and image collection
 must not be loaded into memory or indexed during web application startup.
 
-The gold Parquet remains available for later metadata enrichment. The initial
-catalogue can be built from the selected bronze or manifest records, which carry
-the image paths and rights fields needed by the service.
+Each generation records the dataset repository, immutable revision and contract
+version. A permanent collection refuses selections from another release. Existing
+saved generations can resume their own rows without loading the dataset again.
 
 ## Embedding contract
 
@@ -284,12 +269,12 @@ Minimum catalogue tables:
 | `service_state` | Singleton row containing the active ready index version. |
 
 The file endpoint checks membership in the active generation and resolves
-`relative_path` inside `IMAGE_ROOT`. Hosted images use a private HF bucket mounted
-read-only; local development uses the same file-serving path with a local folder.
+`relative_path` inside `IMAGE_ROOT`. Hosted images use a read-only mounted copy of the cache populated from the HF
+dataset; local development uses the same file-serving path with a local folder.
 Return bytes through the API with `Cache-Control: private, max-age=300`. Missing
 files, unknown IDs, and paths or symlinks outside the root return 404. An unready
 catalogue returns 503. File responses never redirect to storage. Preserve relative
-paths, bytes, checksums, and image IDs when copying files to the bucket.
+paths, bytes, checksums, and image IDs when mounting the dataset image cache.
 
 For agent requests containing a collection record ID such as `co25823`, use the
 [collection ID lookup procedure](collection_id_lookup.md). Match `record_uid`
@@ -494,16 +479,14 @@ returns null bounds. Filter-option queries do not fetch full association records
 [Sources: Qdrant payload indexes](https://qdrant.tech/documentation/manage-data/indexing/),
 [nested filters](https://qdrant.tech/documentation/search/filtering/).
 
-Migration `0002` adds empty JSON metadata columns to existing catalogues. Backfill
-existing selections with `cronjob/refresh_image_metadata.py --generation RUN_ID`.
-It scans at most 1,000 metadata records by default, up to 10,000 with
-`--scan-limit`, and requires every selected association to be found before
-updating metadata. It updates the selection snapshot, catalogue metadata, and the
-payloads of existing Qdrant points; vector values, embedding cache, IDs, and
-ingestion statuses are preserved. Prepared runs receive an empty indexed
-collection and remain pending. The command never reads or uploads image bytes.
-Stop the API before refreshing a published generation and restart after success.
-Retry the same command after an interruption to reconcile Qdrant with the catalogue.
+Migration `0006` adds release and association provenance. Refresh existing
+metadata with `cronjob/refresh_image_metadata.py --generation RUN_ID`. It scans
+at most 1,000 prepared image rows by default; `--scan-limit` accepts any positive
+limit. Every selected image must be found with its original checksum before
+metadata is changed. Prepared associations and filter rows are copied into the
+catalogue and Qdrant payloads, with no date parsing or embedding. Stop the API
+while updating a permanent collection and restart after success. Retrying
+reconciles Qdrant with the desired catalogue state.
 
 ## HTTP API
 
@@ -683,7 +666,7 @@ bun run dev
 bash scripts/generate-client.sh
 ```
 
-Support repeatable `--metadata`, `--seed`, `--limit`, `--scan-limit`, `--dry-run`,
+Support repeatable `--seed`, `--limit`, `--scan-limit`, `--dry-run`,
 `--prepare-only`, and `--resume <run_id>`. Omission of `--limit` reuses a saved
 selection, as described above. Configure roots and storage paths through
 backend settings. Reject conflicting selection options when resuming. Exit `0`

@@ -11,9 +11,10 @@ from app.models import Association, Generation, Image
 from app.schemas import MetadataFilters
 from app.services import catalogue
 from app.services.embeddings import SearchError
-from app.services.ingestion import create_generation, run_ingestion
+from app.services.ingestion import run_ingestion
 from app.services.neon_http import NeonHttpQueries, connection, prepare
 from app.services.search import SearchService
+from conftest import create_generation
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session

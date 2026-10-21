@@ -1,71 +1,47 @@
-"""Refresh selected catalogue metadata without reading images or embedding them."""
+"""Copy a prepared HF release's metadata into an existing application index."""
 
-import json
 from itertools import islice
-from pathlib import Path
 
 from qdrant_client import models
+from sqlalchemy import delete
 from sqlmodel import Session, select
 
 from app.models import Association, Generation, Image
+from app.services.dataset import CATALOGUE_VERSION, load_catalogue
 from app.services.embeddings import SearchError
-from app.services.metadata import extract_metadata, filter_rows
-from app.services.selection import source
+from app.services.ingestion import save_selection
 
 
-def refresh_metadata(
-    engine, settings, generation_id: str, metadata: list[Path], scan_limit: int, vectors
-):
+def refresh_metadata(engine, settings, generation_id: str, scan_limit: int, vectors):
     with Session(engine, expire_on_commit=False) as session:
         generation = session.get(Generation, generation_id)
         if not generation:
             raise ValueError("Unknown ingestion run.")
-        associations = session.exec(
-            select(Association).where(Association.generation_id == generation_id)
-        ).all()
         images = session.exec(
             select(Image).where(Image.generation_id == generation_id)
         ).all()
-        wanted = {(item.source_json, item.record_uid) for item in associations}
+        wanted = {image.image_id: image for image in images}
+        rows, release = load_catalogue(settings, with_images=False)
         found, scanned = {}, 0
-        if len({path.name for path in metadata}) != len(metadata):
-            raise ValueError("Metadata files must have distinct filenames.")
-        for path in metadata:
-            for record in islice(
-                source.iter_records(path), max(0, scan_limit - scanned)
-            ):
-                scanned += 1
-                key = (path.name, (record.get("@admin") or {}).get("uid"))
-                if key in wanted:
-                    found[key] = {
-                        **extract_metadata(record),
-                        "date": source.record_metadata(record)["date"],
-                    }
-                if found.keys() >= wanted:
-                    break
-            if found.keys() >= wanted:
+        for row in islice(rows, scan_limit):
+            scanned += 1
+            if row.get("schema_version") != CATALOGUE_VERSION:
+                raise ValueError("Unsupported catalogue schema")
+            if row["image_id"] in wanted:
+                if (
+                    row["image_id"] in found
+                    or row["checksum"] != wanted[row["image_id"]].checksum
+                ):
+                    raise ValueError(
+                        "Dataset image identity changed; rebuild the index"
+                    )
+                found[row["image_id"]] = row
+            if found.keys() >= wanted.keys():
                 break
-        if missing := wanted - found.keys():
+        if found.keys() != wanted.keys():
             raise ValueError(
-                f"{len(missing)} selected records were not found within the scan limit; nothing was changed. Supply the original metadata files or increase --scan-limit."
+                "Selected images were not found within the scan limit; nothing was changed. Use the matching release or increase --scan-limit."
             )
-        snapshot = settings.data_dir / "selections" / f"{generation_id}.jsonl"
-        selected = [
-            json.loads(line)
-            for line in snapshot.read_text().splitlines()
-            if line.strip()
-        ]
-        # Validate the snapshot before changing either database.
-        if {item["image_id"] for item in selected} != {
-            image.image_id for image in images
-        }:
-            raise ValueError("The selection snapshot does not match this generation.")
-        for item in selected:
-            for association in item["associations"]:
-                association.update(
-                    found[(association["source_json"], association["record_uid"])]
-                )
-            item["filter_metadata"] = filter_rows(item["associations"])
         if generation.status == "ready" and not vectors.client.collection_exists(
             generation.collection
         ):
@@ -74,29 +50,33 @@ def refresh_metadata(
                 "index_inconsistent",
             )
         vectors.ensure_collection(generation)
-        for association in associations:
-            for key, value in found[
-                (association.source_json, association.record_uid)
-            ].items():
-                setattr(association, key, value)
-            session.add(association)
         for image in images:
-            image.filter_metadata = filter_rows(
-                [
-                    association.model_dump()
-                    for association in associations
-                    if association.image_id == image.image_id
-                ]
-            )
+            prepared = found[image.image_id]
+            image.title = prepared["title"]
+            image.filter_metadata = prepared["filter_metadata"]
             session.add(image)
+            session.execute(
+                delete(Association).where(
+                    Association.generation_id == generation_id,
+                    Association.image_id == image.image_id,
+                )
+            )
+            for index, association in enumerate(prepared["associations"]):
+                session.add(
+                    Association(
+                        id=f"{generation_id}:{image.image_id}:{index}",
+                        generation_id=generation_id,
+                        image_id=image.image_id,
+                        **association,
+                    )
+                )
+        generation.dataset_repo_id = release["repo_id"]
+        generation.dataset_revision = release["revision"]
+        generation.dataset_schema_version = release["schema_version"]
+        session.add(generation)
         session.commit()
-        temporary = snapshot.with_suffix(".jsonl.tmp")
-        temporary.write_text(
-            "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in selected)
-        )
-        temporary.replace(snapshot)
-
-    # The Neon catalogue is the desired state. Retrying repairs an interrupted payload update.
+    save_selection(engine, settings, generation_id)
+    # Catalogue metadata is the desired state. A retry repairs interrupted writes.
     updated = 0
     for image in images:
         points = vectors.client.retrieve(
@@ -106,7 +86,7 @@ def refresh_metadata(
             with_vectors=False,
         )
         if not points:
-            continue  # Prepared samples have no vectors yet.
+            continue
         result = vectors.client.overwrite_payload(
             generation.collection,
             payload=vectors.expected_payload(generation, image),
@@ -129,4 +109,5 @@ def refresh_metadata(
         "images": len(images),
         "payloads_updated": updated,
         "payload_indexes": 4,
+        "dataset": release,
     }

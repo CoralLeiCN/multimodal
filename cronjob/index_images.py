@@ -4,17 +4,16 @@
 import argparse
 import json
 import sys
-from pathlib import Path
 
 import logfire
-from app.core.config import ROOT, Settings
+from app.core.config import Settings
 from app.core.db import make_engine, migrate
 from app.core.locking import ingestion_lock
 from app.core.telemetry import configure_telemetry
+from app.services.dataset import select_images
 from app.services.embeddings import SearchError, create_embeddings
 from app.services.ingestion import create_generation, run_ingestion, saved_generation_id
 from app.services.qdrant_store import VectorStore
-from app.services.selection import select_images
 
 
 def main(argv=None):
@@ -27,10 +26,9 @@ def main(argv=None):
     parser.add_argument(
         "--scan-limit",
         type=int,
-        help="Metadata records to scan (positive integer); default 1000",
+        help="Prepared catalogue images to scan (positive integer); default 1000",
     )
     parser.add_argument("--seed", type=int, help="Repeatable sample seed; default 42")
-    parser.add_argument("--metadata", type=Path, action="append")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
         "--prepare-only",
@@ -54,7 +52,6 @@ def main(argv=None):
     if args.resume and (
         args.dry_run
         or args.prepare_only
-        or args.metadata
         or any(value is not None for value in (args.limit, args.scan_limit, args.seed))
     ):
         parser.error("resume cannot be combined with selection options")
@@ -64,7 +61,6 @@ def main(argv=None):
         and (
             args.dry_run
             or args.prepare_only
-            or args.metadata
             or args.scan_limit is not None
             or args.seed is not None
         )
@@ -89,11 +85,8 @@ def main(argv=None):
     try:
         with ingestion_lock(settings, shared=not args.dry_run):
             if args.limit is not None:
-                metadata = args.metadata or sorted(
-                    (ROOT / "data/bronze").glob("smg_object_records*.json")
-                )
                 selected, report = select_images(
-                    settings, metadata, args.limit, args.scan_limit, args.seed
+                    settings, args.limit, args.scan_limit, args.seed
                 )
                 print(json.dumps(report), flush=True)
                 if not selected:

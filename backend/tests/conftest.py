@@ -7,7 +7,7 @@ import pytest
 from app.core.config import Settings, postgres_url
 from app.core.db import make_cache_engine, make_engine, migrate
 from app.services.embeddings import SearchError
-from app.services.ingestion import create_generation
+from app.services.ingestion import create_generation as _create_generation
 from app.services.qdrant_store import VectorStore
 from PIL import Image as PillowImage
 from pydantic import SecretStr
@@ -38,6 +38,35 @@ class FakeEmbeddings:
 
     def close(self):
         pass
+
+
+def prepare_fixture(selected):
+    from app.services.metadata import normalize_label
+
+    for item in selected:
+        rows = []
+        for association in item["associations"]:
+            base = {
+                "record_uid": association["record_uid"],
+                "place": sorted(
+                    {normalize_label(v) for v in association.get("places", [])}
+                ),
+                "category": sorted(
+                    {normalize_label(v) for v in association.get("categories", [])}
+                ),
+            }
+            for interval in association.get("date_ranges") or [{}]:
+                row = {**base, **interval}
+                if row not in rows:
+                    rows.append(row)
+        item["filter_metadata"] = rows
+    return selected
+
+
+def create_generation(engine, settings, selected, report, **kwargs):
+    return _create_generation(
+        engine, settings, prepare_fixture(selected), report, **kwargs
+    )
 
 
 @pytest.fixture(scope="session")

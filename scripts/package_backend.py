@@ -30,7 +30,7 @@ COMMON = (
     "services/catalogue.py",
     "services/neon_http.py",
     "services/qdrant_store.py",
-    "services/selection.py",
+    "services/image_files.py",
     "services/metadata.py",
 )
 EXTRA = {

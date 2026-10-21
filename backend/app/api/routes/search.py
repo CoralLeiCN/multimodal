@@ -4,7 +4,7 @@ from fastapi import APIRouter, File, Form, UploadFile
 
 from app.api.deps import SearchDep, parse_filters
 from app.schemas import SearchResponse, TextQuery
-from app.services.selection import validate_image
+from app.services.image_files import validate_image
 
 router = APIRouter(prefix="/search", tags=["search"])
 

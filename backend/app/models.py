@@ -17,6 +17,9 @@ class Generation(SQLModel, table=True):
     model: str
     dimensions: int
     config_hash: str
+    dataset_repo_id: str = ""
+    dataset_revision: str = ""
+    dataset_schema_version: str = ""
     count: int = 0
     scanned: int = 0
     skipped: int = 0
@@ -54,6 +57,13 @@ class Association(SQLModel, table=True):
     record_uid: str
     image_uid: str = ""
     source_json: str
+    record_type: str = ""
+    source_sha256: str = ""
+    source_record_url: str = ""
+    association_id: str = ""
+    licence_url: str = ""
+    rights_json: str = ""
+    attribution: str = ""
     title: str = ""
     description: str = ""
     date: str = ""

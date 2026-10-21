@@ -4,26 +4,26 @@
 
 This project develops text and image search for the Science Museum Group collection.
 
-- `cronjob/match_images.py` streams metadata exports and matches local image paths, producing a CSV manifest and JSON coverage report.
-- `cronjob/silver_to_gold.py` converts silver rows with available local images to gold Parquet while preserving their text values and empty fields.
-- `cronjob/test_*.py` contains the automated tests; `cronjob/README.md` documents script options and output fields.
-- `data/bronze/` holds original JSON exports, `data/silver/` holds official processed CSVs, and `data/gold/` holds generated Parquet files. `data/images/` holds extracted thumbnails. The optional `data/processed/` directory is created on demand for image matching outputs and may be removed after review. Git ignores `data/`.
-- `data_view.ipynb` is currently an empty notebook placeholder.
-- `data_spec.md` documents data sources and licensing. Follow `docs/writting_rules.md` for documentation style.
-- `pyproject.toml` and `uv.lock` define the Python environment.
+- `cronjob/index_images.py` loads prepared Hugging Face catalogue rows, caches images and builds PostgreSQL/Qdrant indexes.
+- `cronjob/refresh_image_metadata.py` copies prepared release metadata into existing indexes.
+- `backend/app/services/dataset.py` is the dataset consumer. Keep source interpretation in the separate `smg-datasets` repository.
+- `data/` contains ignored dataset/model caches and indexing state. No raw JSON or CSV is an application input.
+- `data_spec.md` and `data_processing_spec.md` document consumption and attribution. Follow `docs/writting_rules.md`.
 
 ## Build, Test, and Development Commands
 
-Run commands from the repository root with Python 3.12 or newer. The silver-to-gold converter uses pandas for CSV and Parquet operations, with PyArrow as the Parquet engine. The standalone matching script uses the standard library.
+Use Python 3.12+ from the repository root.
 
-- `uv sync --locked`: install the locked environment, including the development notebook kernel.
-- `uv run cronjob/silver_to_gold.py`: convert the official silver CSV into gold Parquet.
-- `python3 cronjob/match_images.py`: process bronze exports and images into `data/processed/image_manifest.csv` and `image_match_summary.json`.
-- `python3 cronjob/match_images.py --help`: inspect input paths, output paths, and strict matching options.
-- `uv run --all-packages --extra agent --extra web pytest`: run the Python backend tests with a disposable `TEST_POSTGRES_URL`.
-- `uv run ruff check .`: lint Python code with Ruff.
+- `uv sync --locked --all-packages`: install locked dependencies.
+- `make preview-index`: inspect a prepared dataset sample.
+- `make index LIMIT=50 WORKERS=1 BATCH_SIZE=8`: load and index a sample.
+- `make index`: resume saved catalogue rows.
+- `uv run --all-packages --extra agent --extra web pytest`: run tests with a disposable `TEST_POSTGRES_URL`.
+- `uv run ruff check .`: lint Python.
 
-pytest and Ruff are included in the project's locked development dependencies.
+Set `HF_DATASET_ID` and a full commit `HF_DATASET_REVISION`, or use
+`HF_DATASET_PATH` for a local version-3 package. Dataset publishing belongs to
+`smg-datasets`; this repository keeps application embedding and indexing jobs.
 
 ## Code & Specification Alignment
 

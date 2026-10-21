@@ -38,7 +38,10 @@ class Settings(BaseSettings):
     direct_database_url: SecretStr | None = Field(
         default=None, alias="DATABASE_URL_UNPOOLED"
     )
-    image_root: Path = ROOT / "data/images"
+    hf_dataset_id: str | None = None
+    hf_dataset_revision: str | None = None
+    hf_dataset_path: Path | None = None
+    image_root: Path = ROOT / "data/hf-images"
     max_image_bytes: int = 10 * 1024 * 1024
     max_image_pixels: int = 20_000_000
 

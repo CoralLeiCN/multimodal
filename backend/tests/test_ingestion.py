@@ -3,7 +3,8 @@ import json
 import pytest
 from app.models import EmbeddingCache, Generation, Image, Ingestion, ServiceState
 from app.services.embeddings import SearchError
-from app.services.ingestion import create_generation, run_ingestion
+from app.services.ingestion import run_ingestion
+from conftest import create_generation
 from sqlalchemy import inspect
 from sqlmodel import Session, select
 

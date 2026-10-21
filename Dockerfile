@@ -44,7 +44,6 @@ WORKDIR /app
 COPY --from=python-build /opt/venv /opt/venv
 COPY --from=python-build --chown=appuser:appuser /build/packaged/app/ ./backend/app/
 COPY --chown=appuser:appuser backend/alembic.ini ./backend/alembic.ini
-COPY --chown=appuser:appuser cronjob/match_images.py ./cronjob/match_images.py
 COPY --chown=appuser:appuser uv.lock ./uv.lock
 COPY --from=frontend-build --chown=appuser:appuser /build/frontend/dist/${EDITION}/ ./frontend/dist/${EDITION}/
 # The generated launcher fixes the entry point at build time.

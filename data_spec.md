@@ -1,340 +1,43 @@
-# Science Museum Group data and licensing
+# Collection dataset
 
-## Downloaded data
+The application consumes the Science Museum Group release prepared by the
+`smg-datasets` repository. Original exports, curation decisions, schema research,
+metadata normalization, image matching, release validation and publication are
+maintained there. App indexing, embeddings, PostgreSQL and Qdrant remain here.
 
-This project uses the `with_CC_images` exports from the
-[Science Museum Group datasets page](https://coimages.sciencemuseumgroup.org.uk/datasets/index.html):
+The eventual Hugging Face ID is `YOUR_ACCOUNT/YOUR_DATASET`; this is a placeholder,
+not a published repository. Configure the actual ID and immutable commit revision
+when supplied. See [the consumption contract](data_processing_spec.md) and
+[indexing commands](cronjob/README.md).
 
-- `data/bronze/smg_object_records_with_CC_images_09_04_2025.json`
-- `data/bronze/smg_document_records_with_CC_images_09_04_2025.json`
-- Official processed CSV:
-  `data/silver/smg_object_records_with_CC_images_09_04_2025.csv`.
-- Images from `smg_all_medium_thumbnail_images_09_04_2025.zip`, extracted under
-  `data/images/smg_all_medium_thumnail_images_09_04_2025/`.
+Package schema 3.0.0 provides `objects`, `documents`, `images` and `catalogue`.
+The app uses `catalogue` version 1.0.0: one image location with original bytes,
+prepared filter metadata and all eligible object/document associations. The
+producer preserves source identities, licences, credits and checksums. Records
+without eligible images remain in the object/document configurations.
 
-The spelling `thumnail` is the extracted directory's actual name.
+Downloaded Parquet uses the standard Hugging Face cache. Selected original bytes
+are cached under `IMAGE_ROOT` (default `data/hf-images`), while indexing reports,
+selection snapshots and the embedding cache remain under `data/search`. Generated
+assets remain ignored by Git. Existing raw downloads can be retained locally for
+reference; application commands no longer read them.
 
-## Image storage
+## Source and attribution
 
-Hugging Face Storage Buckets are the hosted image store. The first local preview
-uses 100 images through a read-only bind mount; the private hosted bucket still
-needs to be provisioned and populated. Preserve each file's bytes and path relative
-to `data/images/`, including the `smg_all_medium_thumnail_images_09_04_2025/` directory.
-The source inventory contains 149,232 JPEGs totaling 2,159,639,760 bytes.
+Original sources: [SMG bulk datasets](https://coimages.sciencemuseumgroup.org.uk/datasets/index.html)
+and [SMG Collection](https://collection.sciencemuseumgroup.org.uk/).
+Museum content retains its source terms. The published dataset card and each
+association retain the applicable image licence, credit and copyright. Code
+licensing does not relicense collection metadata or images. Image eligibility is
+determined by the producer's recorded policy; the app does not infer permission
+from file availability or the source export's name.
 
-The image endpoint checks active catalogue membership and serves
-`IMAGE_ROOT/relative_path` with private browser caching for five minutes. Missing
-files return 404. Paths and symlinks must stay inside the configured root. The
-catalogue retains image IDs, checksums, source locations, associations, and rights
-metadata. Uploading a file to the bucket does not add it to the search index.
-
-See [mounted image storage](backend/README.md#mounted-image-storage) and the
-[HF deployment guide](docs/huggingface_spaces.md#image-storage) for configuration.
+Attribution: © The Board of Trustees of the Science Museum.
+Source: [Science Museum Group Collection](https://collection.sciencemuseumgroup.org.uk/).
 
 ## Planned Hugging Face dataset publication
 
-A later release will publish the collection datasets in Hugging Face dataset
-repositories. Publication is planned; the export and upload workflow has not
-been implemented. The first hosted release is a public search Space, starting
-with the locally validated 100-image sample.
-
-Prepare reproducible releases containing collection metadata and the selected
-image files, with source record and image identifiers, catalogue image IDs,
-relative paths, SHA-256 checksums, and record–image associations. Preserve the
-per-image licence, copyright, credit, source links, and any modification notes
-under the existing reuse rules below. The eleven-column gold Parquet needs
-these rights and association fields joined from bronze or the image manifest.
-
-Each release should include a [dataset card](https://huggingface.co/docs/hub/datasets-cards)
-describing sources, processing, selection, schema, and the applicable metadata
-and image licences. Choose and validate an
-[HF image dataset format](https://huggingface.co/docs/hub/datasets-image) when
-building the exporter, including a working image preview and download path.
-
-Record the published dataset revision alongside the matching search generation.
-The app's mounted HF bucket can contain the same selected image bytes and paths;
-PostgreSQL and Qdrant remain the runtime catalogue and vector index. Dataset
-publication and public image delivery are separate release choices. Public
-downloads must resolve without exposing credentials for the app's private bucket.
-
-## Local processing
-
-The bronze layer preserves the original JSON exports for reference. The silver
-layer contains the official processed CSV. `cronjob/silver_to_gold.py` uses pandas
-to convert that CSV into `data/gold/object_records.parquet`, with PyArrow as the
-Parquet engine.
-Gold includes silver rows whose `image` references match local files under
-`data/images/`. It retains all columns and text values for those rows, including
-empty strings. The converter reports how many rows were removed.
-The optional image matching script generates a richer manifest and coverage
-report in `data/processed/` on demand. These outputs can be removed after review
-and rebuilt from bronze. Their fields are documented in [the pipeline guide](cronjob/README.md).
-
-SMG provides these exports for academic or personal research. It directs users
-to check each image's licence: a `with_CC_images` record can contain additional
-images with different or unspecified rights. The export name is a selection of
-records, not a blanket licence for every associated file.
-[Source: SMG usage guidance](https://coimages.sciencemuseumgroup.org.uk/datasets/index.html).
-
-### Proposed bronze tables
-
-The [bronze tabular schema proposal](docs/bronze_schema/README.md) defines a new
-representation of the original object and document JSON exports, independent of
-the official CSV. It preserves every record and media occurrence, original
-payloads, source identity, relationships, repeated assertions and their context.
-Its field catalog and decision register document projected fields, unresolved
-meanings and fields retained only in the payload. The schema is a design;
-conversion to these tables has not been implemented. Existing silver-to-gold and
-search ingestion behavior remains as described here.
-
-## What CC means
-
-**CC means Creative Commons**, a family of standard copyright licences. The
-letters specify the conditions attached to a work:
-
-| Term | Meaning |
-| --- | --- |
-| BY — Attribution | Credit the supplied creator/attribution parties, retain applicable notices, link to the source and licence, and indicate changes. |
-| NC — NonCommercial | Use under this licence must not be primarily intended for commercial advantage or monetary compensation. |
-| SA — ShareAlike | When sharing adaptations, use the same or a compatible licence. |
-| ND — NoDerivatives | Sharing adapted material is not permitted under this licence; sharing the original is allowed subject to the other conditions. |
-
-For **[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)**,
-attribution, noncommercial use, and ShareAlike apply. For
-**[CC BY-NC-ND 4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/)**,
-attribution and noncommercial use apply, and adaptations must not be distributed.
-Both licences prohibit additional restrictions on the licensed freedoms and do
-not permit implying the rights holder endorses this project.
-
-SMG also lists **[Open Government Licence v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/)**
-for some images. OGL is a separate licence, not a CC licence. It permits reuse
-and adaptation, including commercial reuse, subject to its terms, including
-source acknowledgement and linking to the licence where possible.
-
-## Metadata and text
-
-SMG assigns **[CC0](https://creativecommons.org/publicdomain/zero/1.0/)** to the
-title, made, maker, and details fields. CC0 dedicates applicable copyright and
-related rights to the public domain to the extent permitted by law.
-Descriptions and other text use **[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)**,
-which requires attribution, a licence link, and disclosure of modifications.
-These metadata terms are separate from each image's licence.
-[Source: SMG metadata terms](https://coimages.sciencemuseumgroup.org.uk/datasets/index.html).
-
-## Handling followed in this project
-
-We obtained the supplied bulk exports and thumbnail archive. The local matching
-workflow follows SMG's published method: it associates each image with its JSON
-record using `multimedia[*].@processed.medium_thumbnail.location`.
-It operates entirely offline and leaves the source JSON and image files unchanged.
-SMG prohibits harvesting IIIF/Zoom endpoints and discourages unnecessary bulk
-downloads of larger images; this script accesses neither.
-[Source: SMG image guidance](https://coimages.sciencemuseumgroup.org.uk/datasets/index.html).
-
-The image manifest generated from bronze preserves the supplied image `licence`, `copyright`, and `credit`
-values, plus the source JSON and record/image identifiers. The original JSON
-retains the complete rights structures and other source metadata.
-
-The generated image manifest also includes dates, makers, catalogue identifiers, measurements,
-classification, archival level, and each thumbnail's pixel dimensions.
-These columns and `description` remain in the CSV for both objects and documents,
-including when values are absent. Missing values are represented by blank cells;
-the columns and corresponding image associations are retained.
-`metadata_details_json` retains the original structures for those selected
-record fields, including date ranges, roles, units, and notes. See the
-[column definitions](cronjob/README.md) for exact source mappings.
-
-The official silver CSV and its gold Parquet contain the eleven columns supplied
-by SMG. Per-image licence, copyright, and credit information is available in
-bronze and the image manifest; follow the source record's `uid` when reviewing
-rights for a gold row.
-
-Project attribution:
-
-> © The Board of Trustees of the Science Museum.
-> Source: [Science Museum Group Collection](https://collection.sciencemuseumgroup.org.uk/).
-
-When presenting or redistributing an image or description, carry its applicable
-credit and notices into that output, link to the source record and the correct
-licence above, and identify modifications. Apply NC, SA, or ND according to that
-individual image's licence. The repository attribution accompanies this project;
-the same information must also accompany relevant downstream uses.
-Image details and web companion result cards display the supplied credit and
-copyright notice, link to the source record, and link recognized licence values
-to their licence terms. Unknown licence text remains as supplied.
-
-## Verified coverage and remaining licence checks
-
-Local audit on 18 September 2026:
-
-| Measure | Count |
-| --- | ---: |
-| Local image files matched to metadata | 149,232 |
-| Distinct thumbnail paths referenced in both JSON files | 240,615 |
-| Referenced thumbnail paths missing locally | 91,383 |
-| Record–image associations with a local match | 152,214 |
-
-The matched associations contain the following **supplied licence values**:
-
-| Licence value in the JSON | Matched associations |
-| --- | ---: |
-| `CC BY-NC-SA 4.0` | 151,679 |
-| `CC-BY-NC-SA 4.0` (source spelling) | 8 |
-| `CC BY-NC-ND 4.0` | 73 |
-| `Open Government Licence v3.0` | 6 |
-| No licence value supplied | 448 |
-
-These are association counts, not distinct-image counts: the same image can
-appear in several records. The 448 associations without licence values need
-their rights established before reuse; the filename or export name supplies no
-substitute. Keep these entries out of reuse selections until that check is done.
-
-`status=matched` confirms a local path, not licence clearance. The script reports
-all associations and preserves rights fields; it does not filter them by licence.
-The verified steps above document sourcing, matching, and retention of attribution.
-Full compliance for a particular use also depends on that use meeting the
-individual licence conditions.
-
-Run `python3 cronjob/match_images.py` to refresh the manifest and coverage counts.
-See [the script documentation](cronjob/README.md) for the output format.
-
-## Search filter metadata
-
-The search ingestion service reads filter metadata from the bronze JSON for its
-bounded image selection. It preserves identifiers, original date display text,
-and image rights in the SQL catalogue and the JSONL selection snapshot.
-
-| Search field | Source and interpretation |
-| --- | --- |
-| `places` | `creation.place[].summary.title`, falling back to the first nonempty `name[].value`. This describes creation places. Preserve full labels and do not infer geographic parents. |
-| `categories` | `category[].name`, falling back to `category[].value`. |
-| `date_ranges` | `creation.date[]`, falling back to top-level `date[]` only when no creation dates exist. Use valid `from` and `to` years; ISO date bounds are reduced to years. If both bounds are absent, an exact year or ISO date in `value` is accepted. |
-
-Duplicate labels compare by Unicode NFKC normalization, collapsed whitespace,
-and case folding. Original display labels remain in the SQL catalogue. Dates must have
-nonzero integer years between -9999 and 9999 and a start no later than the end.
-Partial, reversed, unknown, or unparseable dates contribute no interval.
-Without structured bounds, `c.1993` becomes the single-year interval 1993–1993
-under the [special circa-year rule](data_processing_spec.md#special-date-rule-circa-year).
-Other free text such as “circa 1850” is not interpreted without structured source bounds.
-Keep disjoint ranges and separate record associations distinct. Raw date text
-still includes all supplied creation and top-level date values for display.
-
-Qdrant stores normalized place/category keywords and numeric start/end years in
-nested metadata objects, with one object per association and date interval.
-Date filters use inclusive overlap. Missing metadata remains searchable without
-that field's filter. See [the filter contract](docs/multimodal_search_spec.md#metadata-filters)
-and [metadata refresh command](cronjob/README.md#refresh-search-filter-metadata).
-
-With `QDRANT_COLLECTION_NAME` set, search ingestion keeps an accumulated catalogue
-in the same generation and Qdrant collection. Each sample adds or updates its
-selected image rows, source associations, and filter metadata; images outside
-that sample remain present. Selection snapshots contain the accumulated catalogue.
-See [permanent collection setup](cronjob/README.md#permanent-collection).
-
-Catalogue sharing uses Neon. The repository contains no catalogue database
-snapshot. Indexing without a selection limit reuses saved catalogue rows and
-skips bronze scanning and sampling; an explicit limit selects a new sample.
-The image selection and metadata scan limits accept any positive integer. The
-metadata scan defaults to 1,000 source records; larger samples should explicitly
-increase both limits.
-Catalogue preparation writes images and ingestion rows in SQL batches of up to
-500 images, and associations in batches of up to 500 rows, within one transaction.
-Resampling replaces the selected images' associations, preserves existing ingestion
-recovery state, and retains images outside the selection. A failed SQL batch rolls
-back the complete selection update. JSONL snapshots stream from batched catalogue
-reads and replace the previous file only after successful completion.
-Cached vectors stay in the separate local
-`SEARCH_DATA_DIR/embedding_cache.sqlite3` database; `SEARCH_DATA_DIR` defaults to
-`data/search/`. Existing cache files are reused during indexing. Embedding
-batches retain a separate vector and cache entry per distinct image checksum
-and embedding configuration; batching does not combine image representations.
-The default SigLIP 2 model processes images locally. Its pinned revision and
-preprocessing participate in the configuration fingerprint. Changing the embedding
-configuration requires re-embedding into a separate Qdrant collection while
-preserving source IDs, licences, attribution, and associations. Moving image
-storage while preserving the same bytes and relative paths does not itself
-require new vectors.
-
-## Operational tracing
-
-When Logfire credentials are configured, the backend and indexing process send
-operation metadata to their separately configured Logfire projects: durations,
-model and dimensions, run and image identifiers, attempt numbers, counts, and
-error types or safe error codes. Traces exclude request arguments, query-string values, headers, image
-bytes, embedding vectors, and raw exception messages. See
-[tracing configuration](backend/README.md#logfire-tracing) to enable or disable
-cloud export.
-
-## Shared catalogue storage
-
-`DATABASE_URL` is required. Neon PostgreSQL holds the image catalogue,
-record associations, source labels, attribution, index generations, ingestion
-ledger, and active generation.
-Qdrant retains vectors and filter payloads. Image bytes, original exports, local
-embedding cache, and generated reports remain outside PostgreSQL.
-
-Connection and maintenance instructions are in
-[Neon collaboration](backend/README.md#neon-collaboration).
-
-## Agent inputs and generated assets
-
-Brand reference uploads, subject uploads, and generated images are separate from
-the official collection layers and search index. Cloud agent assets use a separate private HF Storage Bucket; local preparation and tests use ignored `data/agent/assets/`.
-Each asset records its checksum, MIME type, dimensions, workspace, and source.
-Generated assets record the run, step, generation model, and reference asset IDs.
-Immutable brand versions retain their uploaded reference IDs.
-
-Agent tasks use a separate PostgreSQL database in production, with SQLite only for
-local preparation and tests. Task inputs, checkpoints, evaluations, and provider
-usage records persist there; the task process working directory is temporary. Chat turns can
-import a collection image explicitly requested by ID into private agent storage.
-The bridge preserves source rights metadata; it does not implement a rights-approval
-workflow. Operators must use assets authorized for their intended purpose.
-
-Only task metadata is exported to tracing by default. Unreferenced task objects older
-than 24 hours may be cleaned up; referenced inputs and outputs are retained. See
-[Image Studio setup](docs/image_agent_setup.md) for storage and execution limits.
-
-## Conversation image references
-
-The task process requests search `image_id` resolution through the trusted gateway.
-The gateway reads the active PostgreSQL generation or a configured trusted
-collection API. Direct reads use files from the configured image mount. Online
-reads use fixed API routes and reject redirects. Direct reads verify the catalogue checksum; online reads
-validate the returned image ID and bound the metadata and image responses.
-Imported images retain their source identifiers, title, licence, copyright, and
-credit in private agent storage. Direct imports also record the catalogue generation. Generated outputs link their
-input asset IDs so subsequent edits preserve provenance. This lookup does not assess
-derivative-use permission; the operator must select images authorized for the intended
-use. A policy enforcing rights approval is not part of the current prototype.
-See [Brand chat agent backend](docs/chat_agent_backend.md) for the API and limits.
-
-For chat collection-record references (`co…`), the trusted gateway resolves exact
-`image_associations.record_uid` matches through the shared PostgreSQL catalogue.
-It scopes joins to the active ready generation and preserves `requested_record_uid`
-alongside the resolved image UUID and attribution in imported asset provenance.
-Multiple matching images require user selection; see [collection ID lookup](docs/collection_id_lookup.md).
-
-Brand profiles store six designer-facing values: `name`, `description`, `colors`,
-`personality`, `typography`, and `illustration_style`. Profiles remain immutable
-versions in the agent database's JSON column; no catalogue migration is required.
-When editing a saved version, `/create` retains its `preserve`, `avoid`, and
-`reference_asset_ids` values alongside the six visible fields. New brands default
-these hidden fields to empty strings and an empty reference list.
-The six values are inserted as data into the packaged YAML brand prompt template.
-
-Compiled Studio chat tasks can set `clear_subject=true` to clear the conversation's
-current subject and generate without a subject image. Existing assets and brand style
-references remain available. Message history includes each run's `review_status`
-(`accepted`, `needs_review`, or null), independently of execution success or failure.
-
-
-## Private web conversation state
-
-The web companion stores account-owned conversations, run results and upload
-metadata in PostgreSQL `explorer_*` tables. Staged uploads and resumable Codex
-thread state use the private `EXPLORER_STATE_DIR` volume. These files are user
-inputs, separate from the collection's HF image mount and future public dataset.
-They must not be included in dataset publication. Operators must set a retention
-and account deletion policy before public web access.
+Publication tooling is maintained in `smg-datasets` as
+`python -m smg_datasets.publish_huggingface`. The default command validates and
+prints a plan; `--publish` performs the upload. The returned commit SHA pins the
+application release. Publication has not been performed as part of this migration.

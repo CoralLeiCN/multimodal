@@ -19,7 +19,7 @@ flowchart LR
     Browser --> Space[Public HF Docker Space: React + FastAPI]
     Space -->|Read-only HTTPS SQL 443| Neon[Neon catalogue]
     Space -->|HTTPS 443| Qdrant[Qdrant vectors]
-    Space --> Images[Read-only private HF bucket mount]
+    Space --> Images[Read-only dataset image cache]
     Space --> Model[Local SigLIP 2 CPU inference]
 ```
 
@@ -27,7 +27,7 @@ flowchart LR
 
 | Order | Work | Completion check |
 | --- | --- | --- |
-| 1 | Prepare the HF image bucket and model cache. | Upload the 100 sample images with unchanged relative paths and checksums. Prepare pinned weights outside the app image. |
+| 1 | Prepare the HF dataset image cache and model cache. | Cache 100 prepared dataset images with verified checksums. Prepare pinned weights outside the app image. |
 | 2 | Publish the SigLIP sample to the chosen cloud catalogue and Qdrant collection. | Model, revision, dimensions, image IDs, and active generation match. Text, uploaded-image, similar-image, and filtered searches return the expected sample results. |
 | 3 | Create a public Space and configure secrets, storage, and connections. | Confirm account plan eligibility. Images and weights load from the selected storage. Authenticated Qdrant and Neon HTTPS reads on 443 succeed. Apply migrations from the operator environment before deployment; validate reconnection. |
 | 4 | Verify public access and release scope. | Signed-out users can use pages, images and search endpoints. Agent APIs and Studio are absent. Bucket and database credentials remain server-side. |
@@ -42,8 +42,8 @@ owning namespace, release scope, and package format during that work. Verify
 the published files, checksums, associations, and image loading from a clean
 environment, and record the dataset revision with the matching search generation.
 
-The Space can continue serving the same files through its read-only HF bucket
-mount. Its image API is public even if the bucket is private. Direct browser
+The Space can continue serving the same files through its read-only image cache
+mount. Its image API is public even if the dataset is private. Direct browser
 delivery from public HF dataset URLs can be evaluated during publication.
 
 ## Container packaging
@@ -93,43 +93,25 @@ Use [the local Compose stack](../deploy/compose.local.yml) with
 catalogue and Qdrant collection on localhost ports 15432 and 16333. The app uses
 port 7860. Use these fixture services independently of the shared catalogue and index.
 
-Start the databases, then select 100 images from your existing local source
-files. Replace the two `/absolute/path` arguments with the extracted image root
-and bronze object JSON export. Preserve the selected files' relative paths.
+Start the databases, then load 100 images from a prepared HF release. Set
+`HF_DATASET_ID` and its full commit `HF_DATASET_REVISION` in
+`deploy/local-preview.env`, or use `HF_DATASET_PATH` for a local version-3 package.
+The repository ID remains a placeholder until supplied. The indexer downloads
+prepared rows and writes selected bytes directly into the preview image cache.
 
 ```sh
 docker compose -f deploy/compose.local.yml up -d postgres qdrant
-IMAGE_ROOT=/absolute/path/to/images uv run --locked --env-file deploy/local-preview.env \
+uv run --locked --env-file deploy/local-preview.env \
   --package multimodal-backend cronjob/index_images.py \
-  --limit 100 --scan-limit 5000 --seed 42 \
-  --metadata /absolute/path/to/object_records.json --prepare-only
-```
-
-The command prints a run ID and writes
-`data/local-preview/search/selections/RUN_ID.jsonl`. Copy only those selected
-files into the preview image directory, retaining attribution in the catalogue:
-
-```sh
-python3 - /absolute/path/to/images RUN_ID <<'PYTHON'
-import json
-import shutil
-import sys
-from pathlib import Path
-source = Path(sys.argv[1]).resolve()
-snapshot = Path('data/local-preview/search/selections') / (sys.argv[2] + '.jsonl')
-for line in snapshot.read_text().splitlines():
-    relative = json.loads(line)['relative_path']
-    origin = (source / relative).resolve()
-    assert origin.is_relative_to(source)
-    target = Path('data/local-preview/images') / relative
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(origin, target)
-PYTHON
+  --limit 100 --scan-limit 5000 --seed 42 --prepare-only
 uv run --locked --env-file deploy/local-preview.env --package multimodal-backend \
   cronjob/index_images.py --resume RUN_ID --workers 1 --batch-size 8
 docker build --platform linux/amd64 -t multimodal-space:local .
 docker compose -f deploy/compose.local.yml up -d --wait --wait-timeout 180
 ```
+
+Use the run ID printed by preparation. No raw source exports or image archive
+are required by this application.
 
 The indexer downloads and caches the pinned model on its first embedding call.
 The app reuses that model cache and the 100-image directory through read-only
@@ -203,7 +185,7 @@ checks verify that search-only pages do not download chat or Image Studio module
 
 The web edition's separate Codex integration and local validation are documented
 in [product versions](product_versions.md). Live model compatibility and HF
-bucket access still need hosted validation.
+mounted cache access still need hosted validation.
 
 Measured container latency was 8.86 seconds for the cold text request,
 219–227 ms for sampled warm text queries, and 724 ms for image search. Docker
@@ -272,7 +254,7 @@ images outside the app container, and prepare a reusable model cache.
 | Catalogue | `CATALOGUE_TRANSPORT=neon_http`; secret `DATABASE_URL` for a Neon catalogue reader. Keep its original PostgreSQL URL. |
 | Vectors | `QDRANT_URL`, secret `QDRANT_API_KEY`, and `QDRANT_COLLECTION_NAME` matching the catalogue generation. |
 | Model | `EMBEDDING_MODEL=google/siglip2-base-patch16-224`, pinned revision, 768 dimensions, and `EMBEDDING_MODEL_CACHE`. Use `HF_HUB_OFFLINE=1` only with a prepared cache. |
-| Images | `IMAGE_ROOT=/app/data/images` pointing to the read-only HF bucket mount. |
+| Images | `IMAGE_ROOT=/app/data/images` pointing to the read-only dataset image cache. |
 | Release | Default `EDITION=search` build; one Uvicorn worker for the preview. |
 | Telemetry | `LOGFIRE_SEND_TO_LOGFIRE` and secret `LOGFIRE_TOKEN` when exporting traces. |
 
@@ -282,34 +264,17 @@ Check [data and licensing requirements](../data_spec.md) before exposing images.
 
 ### Image storage
 
-Use a private [HF Storage Bucket](https://huggingface.co/docs/hub/storage-buckets)
-attached as a read-only volume. The app reads it through `IMAGE_ROOT` and serves
-images through the API. No bucket has been provisioned or tested yet.
+The published HF dataset is the source of collection images. Indexing populates
+`IMAGE_ROOT` with checksum-verified original bytes from the prepared `catalogue`
+configuration. Give both serving editions a read-only mounted copy of that
+populated cache, preserving its `hf/` paths. Set `IMAGE_ROOT` to the mount point.
+No separate image export or source processing runs in the application.
 
-After selecting the owning HF account, authenticate the `hf` CLI and create the
-private bucket. Replace `NAMESPACE/BUCKET` with the chosen bucket ID:
-
-```sh
-uv run hf auth login
-uv run hf buckets create NAMESPACE/BUCKET --private
-uv run hf buckets sync data/local-preview/images hf://buckets/NAMESPACE/BUCKET --dry-run
-uv run hf buckets sync data/local-preview/images hf://buckets/NAMESPACE/BUCKET
-```
-
-The directory contents go at the bucket root, preserving every catalogue
-`relative_path`. The commands add or update files; they do not remove other files.
-Keep attribution and licences in the matching PostgreSQL catalogue.
-
-In Space Settings, attach the bucket at `/app/data/images` with read-only access
-and set `IMAGE_ROOT=/app/data/images`. HF manages the mount; the search app needs
-no object-storage credentials. Its image endpoint serves bytes from this path
-with private browser caching. Missing images return 404. See
-[Space volumes](https://huggingface.co/docs/hub/spaces-storage).
-
-Verify all 100 images through the API against their catalogue checksums, test
-concurrent image requests, and repeat after replacing the app. Changing the mount
-location while preserving relative paths and bytes does not require new vectors.
-The local Compose fixture exercises the same path using a read-only bind mount.
+The image endpoint serves bytes from this root with private browser caching.
+Missing files return 404. Verify sample responses against their catalogue
+checksums after deployment. The local Compose preview exercises this serving
+path through a read-only bind mount. See [Space storage](https://huggingface.co/docs/hub/spaces-storage)
+for the hosting volume configuration.
 
 ### Model cache and capacity
 
@@ -333,7 +298,7 @@ eligibility: current HF documentation requires a paid plan to create Docker
 Spaces, while CPU Basic has no hourly compute charge.
 [Space visibility and creation](https://huggingface.co/docs/hub/spaces-overview).
 
-The read-only bucket mount protects storage credentials, not the privacy of images
+The read-only cache mount protects storage files, not the privacy of images
 served through the public API. Include only the intended collection release,
 with its licence and attribution fields. Set database and HF credentials through
 Space Secrets and restrict catalogue access to the operations the app needs.
