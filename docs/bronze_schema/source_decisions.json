@@ -1,0 +1,1418 @@
+{
+  "schema_id": "smg_bronze_tabular",
+  "version": "0.1.0-proposed",
+  "scope": "All 57 top-level keys in both fully scanned local raw exports; nested content is always retained in record_json.",
+  "no_irreversible_source_deletions": true,
+  "coverage_note": "Counts measure key presence in top-level records, not nonempty or semantically valid values. They do not establish extraction implementation.",
+  "decisions": [
+    {
+      "source_key": "@admin",
+      "tables": [
+        "records"
+      ],
+      "treatment": "partial_projection",
+      "rationale": "Project source identity, system, stream and supplied added/processed integers. Keep sequence and enhancement internals in payload only; their operational semantics are not needed for collection facts.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 7017,
+          "total_records": 7017,
+          "observed_container_types": {
+            "object": 7017
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 150337,
+          "total_records": 150337,
+          "observed_container_types": {
+            "object": 150337
+          }
+        }
+      }
+    },
+    {
+      "source_key": "@datatype",
+      "tables": [
+        "records"
+      ],
+      "treatment": "project",
+      "rationale": "Retain source record classification and codes without merging object and archive meanings.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 7017,
+          "total_records": 7017,
+          "observed_container_types": {
+            "object": 7017
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 150337,
+          "total_records": 150337,
+          "observed_container_types": {
+            "object": 150337
+          }
+        }
+      }
+    },
+    {
+      "source_key": "@hierarch",
+      "tables": [
+        "entity_references"
+      ],
+      "treatment": "project",
+      "rationale": "Preserve both source structures, path boundaries, self entries and order. Their differing coverage means neither can safely substitute for the other.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 6831,
+          "total_records": 7017,
+          "observed_container_types": {
+            "array": 6831
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 20296,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 20296
+          }
+        }
+      }
+    },
+    {
+      "source_key": "@hierarchy",
+      "tables": [
+        "entity_references"
+      ],
+      "treatment": "project",
+      "rationale": "Preserve both source structures, path boundaries, self entries and order. Their differing coverage means neither can safely substitute for the other.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 6852,
+          "total_records": 7017,
+          "observed_container_types": {
+            "array": 6852
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 36470,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 36470
+          }
+        }
+      }
+    },
+    {
+      "source_key": "access",
+      "tables": [
+        "texts",
+        "rights_statements"
+      ],
+      "treatment": "partial_projection",
+      "rationale": "Preserve public-facing access notes, conditions, copies and originals. Keep access.rights permission objects in payload only; APIPool/Read is a source publishing permission, not an image reuse licence.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 7017,
+          "total_records": 7017,
+          "observed_container_types": {
+            "object": 7017
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 4,
+          "total_records": 150337,
+          "observed_container_types": {
+            "object": 4
+          }
+        }
+      }
+    },
+    {
+      "source_key": "accrual",
+      "tables": [
+        "texts"
+      ],
+      "treatment": "project",
+      "rationale": "Archival accrual expectations are collection context; retain every statement without interpreting it as a current promise.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 49,
+          "total_records": 7017,
+          "observed_container_types": {
+            "array": 49
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 150337,
+          "observed_container_types": {}
+        }
+      }
+    },
+    {
+      "source_key": "age",
+      "tables": [
+        "attributes"
+      ],
+      "treatment": "defer_semantics",
+      "rationale": "Expose as source_age and source_sex. Observed values include 'multiple not home' and 'Ferranti; John Belshaw'; the field names do not justify biological or demographic meanings.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 6902,
+          "total_records": 150337,
+          "observed_container_types": {
+            "object": 6902
+          }
+        }
+      }
+    },
+    {
+      "source_key": "agent",
+      "tables": [
+        "entity_references"
+      ],
+      "treatment": "project",
+      "rationale": "Keep general associations separate from creation makers and creation places. Preserve roles and relationship dates.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 17211,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 17211
+          }
+        }
+      }
+    },
+    {
+      "source_key": "appraisal",
+      "tables": [
+        "events"
+      ],
+      "treatment": "project",
+      "rationale": "Preserve each lifecycle container and all owned dates, notes and participant references, including marker-only containers. Do not equate cumulation with acquisition.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 150337,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 150337
+          }
+        }
+      }
+    },
+    {
+      "source_key": "archive",
+      "tables": [
+        "entity_references"
+      ],
+      "treatment": "project",
+      "rationale": "Retain relationship kind, target identity, literal labels, qualifiers and order. Embedded target facts keep target ownership; missing target records do not invalidate relationships.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 274,
+          "total_records": 7017,
+          "observed_container_types": {
+            "array": 274
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 150337,
+          "observed_container_types": {}
+        }
+      }
+    },
+    {
+      "source_key": "arrangement",
+      "tables": [
+        "texts"
+      ],
+      "treatment": "project",
+      "rationale": "Preserve arrangement system and approach separately, accepting the observed scalar object form and list archive form without splitting prose.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 155,
+          "total_records": 7017,
+          "observed_container_types": {
+            "object": 155
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 4,
+          "total_records": 150337,
+          "observed_container_types": {
+            "object": 4
+          }
+        }
+      }
+    },
+    {
+      "source_key": "barcode",
+      "tables": [
+        "identifiers"
+      ],
+      "treatment": "project",
+      "rationale": "Keep each identifier's type, primary flag, source and date context. Equal values of different types are separate assertions.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 133363,
+          "total_records": 150337,
+          "observed_container_types": {
+            "object": 133363
+          }
+        }
+      }
+    },
+    {
+      "source_key": "category",
+      "tables": [
+        "attributes"
+      ],
+      "treatment": "project",
+      "rationale": "Preserve source families, qualifiers and order. Object name, category, material, physical descriptor and management group are distinct concepts even when labels overlap.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 150337,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 150337
+          }
+        }
+      }
+    },
+    {
+      "source_key": "child",
+      "tables": [
+        "entity_references"
+      ],
+      "treatment": "project",
+      "rationale": "Retain relationship kind, target identity, literal labels, qualifiers and order. Embedded target facts keep target ownership; missing target records do not invalidate relationships.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 4139,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 4139
+          }
+        }
+      }
+    },
+    {
+      "source_key": "component",
+      "tables": [
+        "components",
+        "measurement_sets"
+      ],
+      "treatment": "project",
+      "rationale": "Retain named components and their own measurement groups. A text component label elsewhere does not establish a foreign key.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 217,
+          "total_records": 7017,
+          "observed_container_types": {
+            "array": 217
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 7324,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 7324
+          }
+        }
+      }
+    },
+    {
+      "source_key": "conformance",
+      "tables": [],
+      "treatment": "payload_only",
+      "rationale": "Preserve the source conformance declaration in raw payload. It is not a validated completeness or quality score for the new schema.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 7017,
+          "total_records": 7017,
+          "observed_container_types": {
+            "object": 7017
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 150337,
+          "total_records": 150337,
+          "observed_container_types": {
+            "object": 150337
+          }
+        }
+      }
+    },
+    {
+      "source_key": "counts",
+      "tables": [
+        "records"
+      ],
+      "treatment": "project",
+      "rationale": "Retain source direct/all descendant counts; exported or locally available descendants are a different measure.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 4139,
+          "total_records": 150337,
+          "observed_container_types": {
+            "object": 4139
+          }
+        }
+      }
+    },
+    {
+      "source_key": "creation",
+      "tables": [
+        "events"
+      ],
+      "treatment": "project",
+      "rationale": "Preserve each lifecycle container and all owned dates, notes and participant references, including marker-only containers. Do not equate cumulation with acquisition.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 7008,
+          "total_records": 7017,
+          "observed_container_types": {
+            "object": 7008
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 126315,
+          "total_records": 150337,
+          "observed_container_types": {
+            "object": 126315
+          }
+        }
+      }
+    },
+    {
+      "source_key": "culture",
+      "tables": [
+        "attributes",
+        "entity_references",
+        "texts"
+      ],
+      "treatment": "defer_semantics",
+      "rationale": "Expose literal culture names where supplied and preserve the original area, period, note and value codes. Do not decode numeric-looking codes as geography or historical periods without a source codebook.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 696,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 696
+          }
+        }
+      }
+    },
+    {
+      "source_key": "cumulation",
+      "tables": [
+        "events"
+      ],
+      "treatment": "project",
+      "rationale": "Preserve each lifecycle container and all owned dates, notes and participant references, including marker-only containers. Do not equate cumulation with acquisition.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 75176,
+          "total_records": 150337,
+          "observed_container_types": {
+            "object": 75176
+          }
+        }
+      }
+    },
+    {
+      "source_key": "custody",
+      "tables": [
+        "events"
+      ],
+      "treatment": "project",
+      "rationale": "Preserve each lifecycle container and all owned dates, notes and participant references, including marker-only containers. Do not equate cumulation with acquisition.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 43,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 43
+          }
+        }
+      }
+    },
+    {
+      "source_key": "date",
+      "tables": [
+        "dates"
+      ],
+      "treatment": "project",
+      "rationale": "Retain top-level date assertions even when creation dates exist, keeping roles and source paths rather than resolving conflicts in bronze.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 1726,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 1726
+          }
+        }
+      }
+    },
+    {
+      "source_key": "description",
+      "tables": [
+        "texts"
+      ],
+      "treatment": "project",
+      "rationale": "Retain every typed statement and primary flag, including web/catalogue alternatives, markup and original line breaks.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 4285,
+          "total_records": 7017,
+          "observed_container_types": {
+            "array": 4285
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 150337,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 150337
+          }
+        }
+      }
+    },
+    {
+      "source_key": "enhancement",
+      "tables": [],
+      "treatment": "payload_only",
+      "rationale": "Page-view analytics are outside the initial collection-content schema. Retain them in the payload for future research; they do not become object attributes.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 7017,
+          "total_records": 7017,
+          "observed_container_types": {
+            "object": 7017
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 150163,
+          "total_records": 150337,
+          "observed_container_types": {
+            "object": 150163
+          }
+        }
+      }
+    },
+    {
+      "source_key": "event",
+      "tables": [
+        "entity_references"
+      ],
+      "treatment": "project",
+      "rationale": "Retain relationship kind, target identity, literal labels, qualifiers and order. Embedded target facts keep target ownership; missing target records do not invalidate relationships.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 295,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 295
+          }
+        }
+      }
+    },
+    {
+      "source_key": "facility",
+      "tables": [
+        "entity_references"
+      ],
+      "treatment": "project",
+      "rationale": "Retain relationship kind, target identity, literal labels, qualifiers and order. Embedded target facts keep target ownership; missing target records do not invalidate relationships.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 15070,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 15070
+          }
+        }
+      }
+    },
+    {
+      "source_key": "fonds",
+      "tables": [
+        "entity_references"
+      ],
+      "treatment": "project",
+      "rationale": "Retain relationship kind, target identity, literal labels, qualifiers and order. Embedded target facts keep target ownership; missing target records do not invalidate relationships.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 6317,
+          "total_records": 7017,
+          "observed_container_types": {
+            "array": 6317
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 150337,
+          "observed_container_types": {}
+        }
+      }
+    },
+    {
+      "source_key": "grouping",
+      "tables": [
+        "entity_references"
+      ],
+      "treatment": "project",
+      "rationale": "Retain relationship kind, target identity, literal labels, qualifiers and order. Embedded target facts keep target ownership; missing target records do not invalidate relationships.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 20684,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 20684
+          }
+        }
+      }
+    },
+    {
+      "source_key": "identifier",
+      "tables": [
+        "identifiers"
+      ],
+      "treatment": "project",
+      "rationale": "Keep each identifier's type, primary flag, source and date context. Equal values of different types are separate assertions.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 7017,
+          "total_records": 7017,
+          "observed_container_types": {
+            "array": 7017
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 150337,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 150337
+          }
+        }
+      }
+    },
+    {
+      "source_key": "inscription",
+      "tables": [
+        "inscriptions",
+        "texts",
+        "identifiers",
+        "attributes"
+      ],
+      "treatment": "project",
+      "rationale": "Preserve all transcription fragments, translations, transliterations, language, placement, methods, notes and identifiers under the inscription owner.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 37137,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 37137
+          }
+        }
+      }
+    },
+    {
+      "source_key": "institution",
+      "tables": [
+        "entity_references"
+      ],
+      "treatment": "project",
+      "rationale": "Retain relationship kind, target identity, literal labels, qualifiers and order. Embedded target facts keep target ownership; missing target records do not invalidate relationships.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 7015,
+          "total_records": 7017,
+          "observed_container_types": {
+            "array": 7015
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 150337,
+          "observed_container_types": {}
+        }
+      }
+    },
+    {
+      "source_key": "language",
+      "tables": [
+        "attributes"
+      ],
+      "treatment": "project",
+      "rationale": "Preserve source families, qualifiers and order. Object name, category, material, physical descriptor and management group are distinct concepts even when labels overlap.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 150337,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 150337
+          }
+        }
+      }
+    },
+    {
+      "source_key": "legal",
+      "tables": [
+        "rights_statements",
+        "dates"
+      ],
+      "treatment": "project",
+      "rationale": "Keep record-level rights, credits and access statements scoped to the record; do not copy them onto media rights or infer reuse permissions.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 4748,
+          "total_records": 7017,
+          "observed_container_types": {
+            "object": 4748
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 150337,
+          "total_records": 150337,
+          "observed_container_types": {
+            "object": 150337
+          }
+        }
+      }
+    },
+    {
+      "source_key": "level",
+      "tables": [
+        "records"
+      ],
+      "treatment": "project",
+      "rationale": "Retain the exact archival level and source flags/stage strings. Absence is not false and stage is not an independently verified authenticity judgement.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 7015,
+          "total_records": 7017,
+          "observed_container_types": {
+            "object": 7015
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 150337,
+          "observed_container_types": {}
+        }
+      }
+    },
+    {
+      "source_key": "loan",
+      "tables": [
+        "records"
+      ],
+      "treatment": "project",
+      "rationale": "Retain the exact archival level and source flags/stage strings. Absence is not false and stage is not an independently verified authenticity judgement.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 150337,
+          "total_records": 150337,
+          "observed_container_types": {
+            "object": 150337
+          }
+        }
+      }
+    },
+    {
+      "source_key": "location",
+      "tables": [
+        "events",
+        "texts",
+        "dates"
+      ],
+      "treatment": "project",
+      "rationale": "Keep locations, names, shelf strings and associated dates as captured. They are not creation places or guaranteed present-day locations.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 1325,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 1325
+          }
+        }
+      }
+    },
+    {
+      "source_key": "management",
+      "tables": [
+        "attributes"
+      ],
+      "treatment": "project",
+      "rationale": "Preserve source families, qualifiers and order. Object name, category, material, physical descriptor and management group are distinct concepts even when labels overlap.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 486,
+          "total_records": 7017,
+          "observed_container_types": {
+            "object": 486
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 150337,
+          "observed_container_types": {}
+        }
+      }
+    },
+    {
+      "source_key": "material",
+      "tables": [
+        "attributes"
+      ],
+      "treatment": "project",
+      "rationale": "Preserve source families, qualifiers and order. Object name, category, material, physical descriptor and management group are distinct concepts even when labels overlap.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 107714,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 107714
+          }
+        }
+      }
+    },
+    {
+      "source_key": "measurements",
+      "tables": [
+        "measurement_sets"
+      ],
+      "treatment": "project",
+      "rationale": "Retain count, display, dimensions, unit, component scope and notes. Do not infer labels for unlabeled dimensions or convert fractions/units.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 4237,
+          "total_records": 7017,
+          "observed_container_types": {
+            "object": 4237
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 150337,
+          "total_records": 150337,
+          "observed_container_types": {
+            "object": 150337
+          }
+        }
+      }
+    },
+    {
+      "source_key": "movable",
+      "tables": [
+        "records"
+      ],
+      "treatment": "project",
+      "rationale": "Retain the exact archival level and source flags/stage strings. Absence is not false and stage is not an independently verified authenticity judgement.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 150337,
+          "total_records": 150337,
+          "observed_container_types": {
+            "string": 150337
+          }
+        }
+      }
+    },
+    {
+      "source_key": "multimedia",
+      "tables": [
+        "media_occurrences",
+        "media_representations",
+        "rights_statements",
+        "texts",
+        "measurement_sets"
+      ],
+      "treatment": "project",
+      "rationale": "Retain all media occurrences and representations, including PDF originals, absent thumbnails, missing files and unresolved rights. Existence and reuse eligibility are later decisions.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 7017,
+          "total_records": 7017,
+          "observed_container_types": {
+            "array": 7017
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 150337,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 150337
+          }
+        }
+      }
+    },
+    {
+      "source_key": "name",
+      "tables": [
+        "attributes"
+      ],
+      "treatment": "project",
+      "rationale": "Preserve source families, qualifiers and order. Object name, category, material, physical descriptor and management group are distinct concepts even when labels overlap.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 150337,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 150337
+          }
+        }
+      }
+    },
+    {
+      "source_key": "object",
+      "tables": [
+        "entity_references"
+      ],
+      "treatment": "project",
+      "rationale": "Retain relationship kind, target identity, literal labels, qualifiers and order. Embedded target facts keep target ownership; missing target records do not invalidate relationships.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 3619,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 3619
+          }
+        }
+      }
+    },
+    {
+      "source_key": "ondisplay",
+      "tables": [
+        "texts"
+      ],
+      "treatment": "project",
+      "rationale": "Preserve supplied name/gallery/museum statements as capture-time context, with their primary flags and types.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 3376,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 3376
+          }
+        }
+      }
+    },
+    {
+      "source_key": "options",
+      "tables": [
+        "attributes"
+      ],
+      "treatment": "defer_semantics",
+      "rationale": "Preserve option keys and values, including option13=WHOLE, without inventing a codebook or treating the source field as redundant with stage or grouping.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 150337,
+          "total_records": 150337,
+          "observed_container_types": {
+            "object": 150337
+          }
+        }
+      }
+    },
+    {
+      "source_key": "ownership",
+      "tables": [
+        "events"
+      ],
+      "treatment": "project",
+      "rationale": "Preserve each lifecycle container and all owned dates, notes and participant references, including marker-only containers. Do not equate cumulation with acquisition.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 3298,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 3298
+          }
+        }
+      }
+    },
+    {
+      "source_key": "parent",
+      "tables": [
+        "entity_references"
+      ],
+      "treatment": "project",
+      "rationale": "Retain relationship kind, target identity, literal labels, qualifiers and order. Embedded target facts keep target ownership; missing target records do not invalidate relationships.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 6503,
+          "total_records": 7017,
+          "observed_container_types": {
+            "array": 6503
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 20296,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 20296
+          }
+        }
+      }
+    },
+    {
+      "source_key": "physical",
+      "tables": [
+        "attributes"
+      ],
+      "treatment": "project",
+      "rationale": "Preserve source families, qualifiers and order. Object name, category, material, physical descriptor and management group are distinct concepts even when labels overlap.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 108310,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 108310
+          }
+        }
+      }
+    },
+    {
+      "source_key": "place",
+      "tables": [
+        "entity_references"
+      ],
+      "treatment": "project",
+      "rationale": "Keep general associations separate from creation makers and creation places. Preserve roles and relationship dates.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 56627,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 56627
+          }
+        }
+      }
+    },
+    {
+      "source_key": "record_type",
+      "tables": [
+        "records"
+      ],
+      "treatment": "project",
+      "rationale": "Retain source record classification and codes without merging object and archive meanings.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 150337,
+          "total_records": 150337,
+          "observed_container_types": {
+            "object": 150337
+          }
+        }
+      }
+    },
+    {
+      "source_key": "sex",
+      "tables": [
+        "attributes"
+      ],
+      "treatment": "defer_semantics",
+      "rationale": "Expose as source_age and source_sex. Observed values include 'multiple not home' and 'Ferranti; John Belshaw'; the field names do not justify biological or demographic meanings.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 8437,
+          "total_records": 150337,
+          "observed_container_types": {
+            "object": 8437
+          }
+        }
+      }
+    },
+    {
+      "source_key": "stage",
+      "tables": [
+        "records"
+      ],
+      "treatment": "project",
+      "rationale": "Retain the exact archival level and source flags/stage strings. Absence is not false and stage is not an independently verified authenticity judgement.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 6058,
+          "total_records": 150337,
+          "observed_container_types": {
+            "object": 6058
+          }
+        }
+      }
+    },
+    {
+      "source_key": "subject",
+      "tables": [
+        "entity_references"
+      ],
+      "treatment": "project",
+      "rationale": "Retain relationship kind, target identity, literal labels, qualifiers and order. Embedded target facts keep target ownership; missing target records do not invalidate relationships.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 2564,
+          "total_records": 7017,
+          "observed_container_types": {
+            "array": 2564
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 150337,
+          "observed_container_types": {}
+        }
+      }
+    },
+    {
+      "source_key": "summary",
+      "tables": [
+        "records"
+      ],
+      "treatment": "partial_projection",
+      "rationale": "Expose summary.title independently of title assertions. Preserve all other summary members in the complete raw record.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 7017,
+          "total_records": 7017,
+          "observed_container_types": {
+            "object": 7017
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 150337,
+          "total_records": 150337,
+          "observed_container_types": {
+            "object": 150337
+          }
+        }
+      }
+    },
+    {
+      "source_key": "term",
+      "tables": [
+        "entity_references"
+      ],
+      "treatment": "project",
+      "rationale": "Preserve controlled-term IDs, labels, roles and attribution dates. Do not merge these with category or literal object-name assertions.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 7017,
+          "observed_container_types": {}
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 71916,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 71916
+          }
+        }
+      }
+    },
+    {
+      "source_key": "title",
+      "tables": [
+        "texts"
+      ],
+      "treatment": "project",
+      "rationale": "Retain every typed statement and primary flag, including web/catalogue alternatives, markup and original line breaks.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 7017,
+          "total_records": 7017,
+          "observed_container_types": {
+            "array": 7017
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 150164,
+          "total_records": 150337,
+          "observed_container_types": {
+            "array": 150164
+          }
+        }
+      }
+    },
+    {
+      "source_key": "web",
+      "tables": [
+        "texts"
+      ],
+      "treatment": "project",
+      "rationale": "Preserve reference text, including local/network paths. Do not assume every value is a public URL, rewrite it or fetch its target.",
+      "raw_retention": "complete records.record_json and immutable source artifact",
+      "availability": {
+        "smg_document_records_with_CC_images_09_04_2025.json": {
+          "records_present": 88,
+          "total_records": 7017,
+          "observed_container_types": {
+            "array": 88
+          }
+        },
+        "smg_object_records_with_CC_images_09_04_2025.json": {
+          "records_present": 0,
+          "total_records": 150337,
+          "observed_container_types": {}
+        }
+      }
+    }
+  ],
+  "nested_overrides": [
+    {
+      "path": "/@admin/sequence",
+      "treatment": "payload_only",
+      "reason": "Source processing sequence, not a cross-export record identity."
+    },
+    {
+      "path": "/@admin/enhancement",
+      "treatment": "payload_only",
+      "reason": "Analytics pipeline metadata; kept without dedicated semantic columns."
+    },
+    {
+      "path": "/access/rights",
+      "treatment": "payload_only",
+      "reason": "Retain publishing/access permission objects, but do not expose them as copyright licences."
+    },
+    {
+      "path": "/creation/date/*/stratigraphic",
+      "treatment": "raw_named_column",
+      "reason": "Observed attribution-like values make the field name unreliable; preserve as stratigraphic_json."
+    },
+    {
+      "path": "/physical/*/@reference",
+      "treatment": "project",
+      "reason": "Reference occurrence owned by its physical assertion; source shape remains distinct from #value."
+    },
+    {
+      "path": "/physical/*/#value",
+      "treatment": "project",
+      "reason": "Alternative source slot for a physical reference; preserve original pointer and payload even where meanings appear similar."
+    },
+    {
+      "path": "/child/*/multimedia",
+      "treatment": "project",
+      "reason": "Observed singleton object belongs to the embedded child target, not the containing parent record."
+    },
+    {
+      "path": "/multimedia/*/@processed/*",
+      "treatment": "project",
+      "reason": "Open representation names and formats; retain PDF originals and source dimensions, not just medium thumbnails."
+    },
+    {
+      "path": "/facility/*/@hierarchy",
+      "treatment": "project",
+      "reason": "Flat node list differs from top-level array of hierarchy paths; retain source topology and node type."
+    },
+    {
+      "path": "unrecognized future path",
+      "treatment": "retain_and_report",
+      "reason": "Keep complete record_json; report unmapped path/type/occurrence counts and require an explicit decision before claiming projection completeness."
+    }
+  ]
+}

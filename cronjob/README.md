@@ -1,5 +1,10 @@
 # Data preparation scripts
 
+The [bronze tabular schema proposal](../docs/bronze_schema/README.md) describes a
+future raw-JSON-to-Parquet representation for both objects and documents. It
+includes a field catalog and preservation decisions. There is no extractor for
+that format yet; the commands below describe the existing scripts.
+
 ## Sample and index images
 
 Install the Python workspace and start Qdrant from the repository root:

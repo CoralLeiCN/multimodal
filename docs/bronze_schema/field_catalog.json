@@ -1,0 +1,1738 @@
+{
+  "schema_id": "smg_bronze_tabular",
+  "version": "0.1.0-proposed",
+  "status": "design_only",
+  "authored_on": "2026-10-20",
+  "format": "Parquet tables plus immutable source JSON artifacts and build manifest",
+  "implemented": false,
+  "source_patterns_note": "Patterns are research mappings, not executable selectors. * denotes one source array level; owner-relative paths must follow the document's scope rules.",
+  "normalization_default": "No trimming, case folding, label splitting, deduplication, date interpretation, unit conversion or default filling in bronze.",
+  "vocabulary_default": "Source vocabularies remain open. Newly observed values are retained and reported, not rejected or mapped to other.",
+  "types": {
+    "string": "Parquet UTF-8 string",
+    "int64": "Parquet signed 64-bit integer; source type mismatch is preserved in raw_json and reported",
+    "bool": "Parquet boolean, only from an actual JSON boolean",
+    "json": "Parquet UTF-8 containing complete JSON; retain primitive types and array order",
+    "timestamp_us_utc": "Parquet timestamp in UTC, only for known acquisition/build times",
+    "map<string,string>": "Parquet MAP with string keys and values",
+    "list<string>": "Ordered Parquet LIST of strings",
+    "dimension": [
+      {
+        "name": "source_pointer",
+        "type": "string",
+        "nullable": false,
+        "unit": null,
+        "meaning": "Exact dimension item pointer.",
+        "source": "dimension item pointer",
+        "normalization": "preserve source value; no semantic normalization"
+      },
+      {
+        "name": "value_json",
+        "type": "json",
+        "nullable": true,
+        "unit": null,
+        "meaning": "Exact JSON value; fractions, free text and numbers remain distinct.",
+        "source": "value",
+        "normalization": "preserve source value; no semantic normalization"
+      },
+      {
+        "name": "dimension_raw",
+        "type": "string",
+        "nullable": true,
+        "unit": null,
+        "meaning": "Supplied dimension label; never inferred from array position.",
+        "source": "dimension",
+        "normalization": "preserve source value; no semantic normalization"
+      },
+      {
+        "name": "units_raw",
+        "type": "string",
+        "nullable": true,
+        "unit": null,
+        "meaning": "Supplied unit; absent stays absent.",
+        "source": "units",
+        "normalization": "preserve source value; no semantic normalization"
+      },
+      {
+        "name": "type_raw",
+        "type": "string",
+        "nullable": true,
+        "unit": null,
+        "meaning": "Supplied dimension type.",
+        "source": "type",
+        "normalization": "preserve source value; no semantic normalization"
+      },
+      {
+        "name": "primary_raw",
+        "type": "bool",
+        "nullable": true,
+        "unit": null,
+        "meaning": "Supplied primary flag.",
+        "source": "primary",
+        "normalization": "preserve source value; no semantic normalization"
+      },
+      {
+        "name": "raw_json",
+        "type": "json",
+        "nullable": false,
+        "unit": null,
+        "meaning": "Complete original dimension entry.",
+        "source": "dimension item",
+        "normalization": "preserve source value; no semantic normalization"
+      }
+    ],
+    "inscription_detail": [
+      {
+        "name": "source_pointer",
+        "type": "string",
+        "nullable": false,
+        "unit": null,
+        "meaning": "Exact detail item pointer.",
+        "source": "detail item pointer",
+        "normalization": "preserve source value; no semantic normalization"
+      },
+      {
+        "name": "transcription",
+        "type": "string",
+        "nullable": true,
+        "unit": null,
+        "meaning": "Exact transcription, preserving spelling and line endings.",
+        "source": "transcription",
+        "normalization": "preserve source value; no semantic normalization"
+      },
+      {
+        "name": "transliteration",
+        "type": "string",
+        "nullable": true,
+        "unit": null,
+        "meaning": "Source transliteration, separate from translation.",
+        "source": "transliteration",
+        "normalization": "preserve source value; no semantic normalization"
+      },
+      {
+        "name": "translations_json",
+        "type": "json",
+        "nullable": true,
+        "unit": null,
+        "meaning": "All ordered translation entries and qualifiers.",
+        "source": "translation",
+        "normalization": "preserve source value; no semantic normalization"
+      },
+      {
+        "name": "raw_json",
+        "type": "json",
+        "nullable": false,
+        "unit": null,
+        "meaning": "Complete original detail entry.",
+        "source": "detail item",
+        "normalization": "preserve source value; no semantic normalization"
+      }
+    ]
+  },
+  "common_occurrence_columns": [
+    {
+      "name": "row_id",
+      "type": "string",
+      "nullable": false,
+      "unit": null,
+      "meaning": "SHA-256 of canonical JSON [smg-bronze-row-v1, snapshot_id, table_name, source_pointer].",
+      "source": null,
+      "normalization": "generated"
+    },
+    {
+      "name": "snapshot_id",
+      "type": "string",
+      "nullable": false,
+      "unit": null,
+      "meaning": "Foreign key to the containing top-level record.",
+      "source": null,
+      "normalization": "generated"
+    },
+    {
+      "name": "source_pointer",
+      "type": "string",
+      "nullable": false,
+      "unit": null,
+      "meaning": "Exact pointer relative to the source record; empty string means record root.",
+      "source": null,
+      "normalization": "generated"
+    },
+    {
+      "name": "owner_table",
+      "type": "string",
+      "nullable": false,
+      "unit": null,
+      "meaning": "Table of the nearest semantic owner; records for record-level facts.",
+      "source": null,
+      "normalization": "generated"
+    },
+    {
+      "name": "owner_id",
+      "type": "string",
+      "nullable": false,
+      "unit": null,
+      "meaning": "Owner row_id or record snapshot_id.",
+      "source": null,
+      "normalization": "generated"
+    },
+    {
+      "name": "owner_pointer",
+      "type": "string",
+      "nullable": false,
+      "unit": null,
+      "meaning": "Owner's relative source pointer; empty string for root.",
+      "source": null,
+      "normalization": "generated"
+    },
+    {
+      "name": "source_ordinal",
+      "type": "int64",
+      "nullable": true,
+      "unit": null,
+      "meaning": "Zero-based position if this occurrence is an array element; null for a singleton object/scalar.",
+      "source": null,
+      "normalization": "generated"
+    },
+    {
+      "name": "raw_json",
+      "type": "json",
+      "nullable": false,
+      "unit": null,
+      "meaning": "Complete source fragment for this occurrence, including unprojected fields.",
+      "source": "source_pointer",
+      "normalization": "preserve source value; no semantic normalization"
+    },
+    {
+      "name": "field_states",
+      "type": "map<string,string>",
+      "nullable": false,
+      "unit": null,
+      "meaning": "For each projected source field: absent, null, empty_string, empty_array, empty_object, value or type_mismatch.",
+      "source": null,
+      "normalization": "generated"
+    }
+  ],
+  "tables": [
+    {
+      "name": "source_files",
+      "grain": "One immutable input file, identified by its byte SHA-256.",
+      "source_patterns": [
+        "input artifact"
+      ],
+      "purpose": "Identify the exact export behind every row and support reproducible capture history.",
+      "scope": "Input artifact; source file timestamps are not historical collection dates.",
+      "evidence_ids": [
+        "E01",
+        "E02"
+      ],
+      "common_columns": false,
+      "fields": [
+        {
+          "name": "source_file_id",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Lowercase 64-character SHA-256 of original bytes.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "original_filename",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Original export filename.",
+          "source": "artifact filename",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "artifact_path",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Release-relative location of the preserved input artifact.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "byte_size",
+          "type": "int64",
+          "nullable": false,
+          "unit": "bytes",
+          "meaning": "Length of original bytes.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "source_family",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Configured export family: object or document; retain source @datatype separately.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "source_namespace",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Configured identifier namespace, smg for these exports.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "origin_url",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Acquisition URL only when recorded; no fabricated per-file URL.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "acquired_at",
+          "type": "timestamp_us_utc",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Actual capture time when known; not filesystem modification time.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "record_count",
+          "type": "int64",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Number of top-level array members successfully inventoried.",
+          "source": null,
+          "normalization": "generated"
+        }
+      ]
+    },
+    {
+      "name": "records",
+      "grain": "One top-level record occurrence in one source file.",
+      "source_patterns": [
+        "/"
+      ],
+      "purpose": "Keep all objects and archives, raw payloads, identity and record-level context.",
+      "scope": "Only top-level records. Embedded references never become authoritative top-level snapshots.",
+      "evidence_ids": [
+        "E01",
+        "E02",
+        "E03",
+        "E19"
+      ],
+      "common_columns": false,
+      "fields": [
+        {
+          "name": "snapshot_id",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "SHA-256 of canonical JSON [smg-bronze-record-v1, source_file_id, record_ordinal].",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "source_file_id",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Foreign key to source_files.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "record_ordinal",
+          "type": "int64",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Zero-based top-level array index.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "source_pointer",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Absolute pointer /<record_ordinal> in source file.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "record_uid",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Source UID; retain independently of generated snapshot identity.",
+          "source": "/@admin/uid",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "source_record_id",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Source internal ID.",
+          "source": "/@admin/id",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "source_uuid",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Source UUID as text, including malformed future values.",
+          "source": "/@admin/uuid",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "source_system",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied catalogue system name.",
+          "source": "/@admin/source",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "source_stream",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied publication stream.",
+          "source": "/@admin/stream",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "source_added_raw",
+          "type": "int64",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Source added integer; time unit has not been independently established.",
+          "source": "/@admin/added",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "source_processed_raw",
+          "type": "int64",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Source processed integer; distinct from collection event dates.",
+          "source": "/@admin/processed",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "datatype_base",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied object/archive discriminator.",
+          "source": "/@datatype/base",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "datatype_scope_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied scope code, without decoding.",
+          "source": "/@datatype/scope",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "datatype_grouping_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied grouping code, without decoding.",
+          "source": "/@datatype/grouping",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "record_type_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Source record classification, without inference from other fields.",
+          "source": "/record_type/value",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "summary_title",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied summary title, separate from all title assertions.",
+          "source": "/summary/title",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "archival_level",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied archival level; no inferred parent level.",
+          "source": "/level/value",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "loan_flag_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied loan code; do not coerce Y or absent to a boolean.",
+          "source": "/loan/value",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "movable_flag_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied movable code.",
+          "source": "/movable",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "stage_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Source stage statement; retain vocabulary without defining authenticity.",
+          "source": "/stage/value",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "direct_descendants_raw",
+          "type": "int64",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied direct descendant count; may differ from exported child rows.",
+          "source": "/counts/direct-descendants",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "all_descendants_raw",
+          "type": "int64",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied descendant count, not recomputed from this subset.",
+          "source": "/counts/all-descendants",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "record_json",
+          "type": "json",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Complete record JSON, preserving every property, array and primitive value.",
+          "source": "/",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "field_states",
+          "type": "map<string,string>",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Structural presence/type state for projected record fields.",
+          "source": null,
+          "normalization": "generated"
+        }
+      ]
+    },
+    {
+      "name": "texts",
+      "grain": "One supplied text statement or scalar text occurrence.",
+      "source_patterns": [
+        "/title/*",
+        "/description/*",
+        "owned /name/*",
+        "owned /note/*",
+        "/accrual/*",
+        "/arrangement/system",
+        "/arrangement/approach",
+        "/access/note/*",
+        "/access/copies/*",
+        "/access/originals/*",
+        "/access/conditions",
+        "/web/*",
+        "/ondisplay/*"
+      ],
+      "purpose": "Retain every description, caption and archival note with its source type and owner.",
+      "scope": "Root record and explicitly owned embedded occurrences; see ownership rules.",
+      "evidence_ids": [
+        "E03",
+        "E08",
+        "E09",
+        "E14",
+        "E15"
+      ],
+      "common_columns": true,
+      "fields": [
+        {
+          "name": "text_kind",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Source-context class such as title, description, note, arrangement_system, access_copy or web_reference.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Exact text including markup, whitespace, line endings and spelling.",
+          "source": "value or scalar statement",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "type_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Source statement type, e.g. catalogue description, web description or caption.",
+          "source": "type",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "primary_raw",
+          "type": "bool",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Only the supplied boolean; absence stays absent.",
+          "source": "primary",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "language_json",
+          "type": "json",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Language qualifiers when attached to this statement; not inherited automatically.",
+          "source": "language",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "attribution_json",
+          "type": "json",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Source attribution attached to the statement.",
+          "source": "@link/attribution or attribution",
+          "normalization": "preserve source value; no semantic normalization"
+        }
+      ]
+    },
+    {
+      "name": "identifiers",
+      "grain": "One identifier assertion, including barcode as a distinct kind.",
+      "source_patterns": [
+        "owned /identifier/*",
+        "/barcode"
+      ],
+      "purpose": "Preserve accession and other identifiers, primary flags and issuing context.",
+      "scope": "Root record and explicitly owned embedded occurrences; see ownership rules.",
+      "evidence_ids": [
+        "E04",
+        "E13"
+      ],
+      "common_columns": true,
+      "fields": [
+        {
+          "name": "identifier_kind",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "identifier or barcode; generated from source key.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Exact string, including leading zeros and punctuation.",
+          "source": "value",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "type_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied identifier type; never equate accession and inventory numbers by text alone.",
+          "source": "type",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "primary_raw",
+          "type": "bool",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied preferred-identifier flag.",
+          "source": "primary",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "issuing_source",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied source for this identifier.",
+          "source": "source",
+          "normalization": "preserve source value; no semantic normalization"
+        }
+      ]
+    },
+    {
+      "name": "attributes",
+      "grain": "One classification, material, physical, language, management or source-code assertion.",
+      "source_patterns": [
+        "/category/*",
+        "/name/*",
+        "/material/*",
+        "/physical/*",
+        "owned /language/*",
+        "/management/group/*",
+        "/culture/*",
+        "/sex",
+        "/age",
+        "/options"
+      ],
+      "purpose": "Make source statements queryable while keeping material, object name, classification and undecoded codes distinct.",
+      "scope": "Root record and explicitly owned embedded occurrences; see ownership rules.",
+      "evidence_ids": [
+        "E05",
+        "E06",
+        "E16",
+        "E17"
+      ],
+      "common_columns": true,
+      "fields": [
+        {
+          "name": "attribute_kind",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Exact source family; sex and age remain source_sex and source_age with deferred meanings.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "value_json",
+          "type": "json",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Exact JSON scalar or structure under value; no forced string or number conversion.",
+          "source": "value or scalar list item",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied category/name label when a scalar; structured names remain in raw_json and texts.",
+          "source": "name",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "term",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied physical/material term.",
+          "source": "term",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "type_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Original assertion type.",
+          "source": "type",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "descriptor",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Original physical descriptor class.",
+          "source": "descriptor",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "component_label",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied component label; not a guessed component foreign key.",
+          "source": "component",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "museum_code",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied classification museum code.",
+          "source": "museum",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "primary_raw",
+          "type": "bool",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied primary flag; no deduplication of equal labels.",
+          "source": "primary",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "note_json",
+          "type": "json",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Exact qualifiers, including scalar physical notes.",
+          "source": "note",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "codes_json",
+          "type": "json",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Undecoded culture area/period or options payload, retaining original keys.",
+          "source": "culture item or options object",
+          "normalization": "preserve source value; no semantic normalization"
+        }
+      ]
+    },
+    {
+      "name": "events",
+      "grain": "One lifecycle container or location statement, including marker-only containers.",
+      "source_patterns": [
+        "/creation",
+        "/cumulation",
+        "/custody/*",
+        "/ownership/*",
+        "/appraisal/*",
+        "/location/*"
+      ],
+      "purpose": "Keep creation, collection, custody, ownership and location context distinct without pairing independent lists.",
+      "scope": "Root record and explicitly owned embedded occurrences; see ownership rules.",
+      "evidence_ids": [
+        "E01",
+        "E07",
+        "E18"
+      ],
+      "common_columns": true,
+      "fields": [
+        {
+          "name": "event_kind",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Exact source family, including cumulation rather than a guessed acquisition event.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "entity_marker",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied lifecycle marker.",
+          "source": "@entity",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "source_label",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied catalogue/source qualifier.",
+          "source": "source",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Source event/location/appraisal narrative.",
+          "source": "value",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "type_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Source location or event type.",
+          "source": "type",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "shelf_number_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Source location string, retained as historical export context.",
+          "source": "shelf_number",
+          "normalization": "preserve source value; no semantic normalization"
+        }
+      ]
+    },
+    {
+      "name": "entity_references",
+      "grain": "One embedded entity reference or literal occurrence, including each hierarchy node.",
+      "source_patterns": [
+        "/agent/*",
+        "/place/*",
+        "/term/*",
+        "/object/*",
+        "/event/*",
+        "/archive/*",
+        "/subject/*",
+        "/institution/*",
+        "/parent/*",
+        "/child/*",
+        "/grouping/*",
+        "/fonds/*",
+        "/facility/*",
+        "/@hierarch/*",
+        "/@hierarchy/*/*",
+        "event maker/collector/owner/place",
+        "physical @reference or #value",
+        "recursive child/facility hierarchy occurrences"
+      ],
+      "purpose": "Retain referenced IDs, literal names, relationship qualifiers and hierarchy order without fabricating an authority catalogue.",
+      "scope": "Root record and explicitly owned embedded occurrences; see ownership rules.",
+      "evidence_ids": [
+        "E01",
+        "E06",
+        "E10",
+        "E11",
+        "E12",
+        "E13",
+        "E20"
+      ],
+      "common_columns": true,
+      "fields": [
+        {
+          "name": "relation_kind",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Exact source relationship key and context; generic agent does not mean maker.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "entity_kind_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "reference, literal or another supplied @entity marker.",
+          "source": "@entity",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "target_uid",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied target UID; may be absent, a placeholder or outside these exports.",
+          "source": "@admin/uid",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "target_id",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied target internal ID.",
+          "source": "@admin/id",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "target_uuid",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied target UUID string.",
+          "source": "@admin/uuid",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "target_source",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Source system of the embedded target, when supplied.",
+          "source": "@admin/source",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "target_datatype_json",
+          "type": "json",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Target datatype may be a scalar in facility hierarchy nodes.",
+          "source": "@datatype",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "summary_title",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Target label as seen in this occurrence; never globally overwrite labels.",
+          "source": "summary/title",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "level_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Level supplied on this hierarchy/reference node.",
+          "source": "level",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "names_json",
+          "type": "json",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Ordered literal/reference names with their primary/type qualifiers.",
+          "source": "name",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "link_json",
+          "type": "json",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Entire relationship payload, including roles, dates, notes and attribution.",
+          "source": "@link",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "hierarchy_group",
+          "type": "int64",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Zero-based hierarchy path index only for array-of-paths sources.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "hierarchy_position",
+          "type": "int64",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Position within a source hierarchy path/list; no inferred edge.",
+          "source": null,
+          "normalization": "generated"
+        }
+      ]
+    },
+    {
+      "name": "dates",
+      "grain": "One date assertion at its original owner and context.",
+      "source_patterns": [
+        "/date/*",
+        "event /date/*",
+        "identifier /date/*",
+        "rights /date/*",
+        "reference /@link/date",
+        "reference /@link/attribution/date/*",
+        "other explicitly mapped date containers"
+      ],
+      "purpose": "Preserve date text, bounds, roles and evidence before any search-year interpretation.",
+      "scope": "Root record and explicitly owned embedded occurrences; see ownership rules.",
+      "evidence_ids": [
+        "E01",
+        "E07",
+        "E21",
+        "E22"
+      ],
+      "common_columns": true,
+      "fields": [
+        {
+          "name": "date_context",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "record_date, lifecycle_date, relationship_date, attribution_date, identifier_date or rights_date.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "value_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Exact supplied date text.",
+          "source": "value",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "from_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Exact supplied lower bound; no year coercion, correction or zero rejection in bronze.",
+          "source": "from",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "to_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Exact supplied upper bound.",
+          "source": "to",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "primary_raw",
+          "type": "bool",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied primary flag.",
+          "source": "primary",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "source_label",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied source of the date assertion.",
+          "source": "source",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "roles_json",
+          "type": "json",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Ordered supplied roles, retaining their structures.",
+          "source": "role",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "notes_json",
+          "type": "json",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Complete date notes.",
+          "source": "note",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "method_json",
+          "type": "json",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied dating method, without asserting it is an authority.",
+          "source": "method",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "context_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Source explanation, including contradictory dating evidence.",
+          "source": "context",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "period_json",
+          "type": "json",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied period strings/qualifiers.",
+          "source": "period",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "stratigraphic_json",
+          "type": "json",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Retain this source field literally; observed values include attribution-like data.",
+          "source": "stratigraphic",
+          "normalization": "preserve source value; no semantic normalization"
+        }
+      ]
+    },
+    {
+      "name": "components",
+      "grain": "One explicitly supplied component occurrence.",
+      "source_patterns": [
+        "/component/*"
+      ],
+      "purpose": "Keep dimensions and physical details attached to their named component.",
+      "scope": "Root record and explicitly owned embedded occurrences; see ownership rules.",
+      "evidence_ids": [
+        "E08",
+        "E23"
+      ],
+      "common_columns": true,
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied component name.",
+          "source": "name/value",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "name_json",
+          "type": "json",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Complete source name object and qualifiers.",
+          "source": "name",
+          "normalization": "preserve source value; no semantic normalization"
+        }
+      ]
+    },
+    {
+      "name": "measurement_sets",
+      "grain": "One measurements container on a record, component or media representation.",
+      "source_patterns": [
+        "owned /measurements"
+      ],
+      "purpose": "Retain grouped dimensions, display strings, counts, units and qualifiers without numerical guessing.",
+      "scope": "Root record and explicitly owned embedded occurrences; see ownership rules.",
+      "evidence_ids": [
+        "E08",
+        "E23",
+        "E24"
+      ],
+      "common_columns": true,
+      "fields": [
+        {
+          "name": "display_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Original display string, which may already contain several dimensions.",
+          "source": "display",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "count_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Original count text; not assumed to be a scalar number of objects.",
+          "source": "count",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "dimensions",
+          "type": "list<dimension>",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Ordered dimension structs; includes free-text dimensions and repeated imperial/metric entries.",
+          "source": "dimensions",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "filesize_json",
+          "type": "json",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied file size value and unit; not a measurement of the local file.",
+          "source": "filesize",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "notes_json",
+          "type": "json",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Measurement notes, including configuration and approximation.",
+          "source": "note",
+          "normalization": "preserve source value; no semantic normalization"
+        }
+      ]
+    },
+    {
+      "name": "inscriptions",
+      "grain": "One supplied inscription or label with ordered detail fragments.",
+      "source_patterns": [
+        "/inscription/*"
+      ],
+      "purpose": "Keep transcription, translation, transliteration, language, method and physical placement together.",
+      "scope": "Root record and explicitly owned embedded occurrences; see ownership rules.",
+      "evidence_ids": [
+        "E09",
+        "E25"
+      ],
+      "common_columns": true,
+      "fields": [
+        {
+          "name": "type_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied inscription/label type.",
+          "source": "type",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "location_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Location on the object; never a geographic place.",
+          "source": "location",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "method_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied inscription method.",
+          "source": "method",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "inscriber_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Retain source wording; observed values do not consistently name a person.",
+          "source": "inscriber",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "details",
+          "type": "list<inscription_detail>",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Ordered transcription/detail structs; no primary-only reduction.",
+          "source": "details",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "language_json",
+          "type": "json",
+          "nullable": true,
+          "unit": null,
+          "meaning": "All inscription language assertions.",
+          "source": "language",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "descriptions_json",
+          "type": "json",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Description of the inscription itself.",
+          "source": "description",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "notes_json",
+          "type": "json",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Complete notes, including cautions about transcription correspondence.",
+          "source": "note",
+          "normalization": "preserve source value; no semantic normalization"
+        }
+      ]
+    },
+    {
+      "name": "media_occurrences",
+      "grain": "One media reference within a record or embedded target occurrence.",
+      "source_patterns": [
+        "/multimedia/*",
+        "embedded target /multimedia object or array"
+      ],
+      "purpose": "Preserve many-to-many associations and conflicting metadata without restricting media to locally available images.",
+      "scope": "Root record and explicitly owned embedded occurrences; see ownership rules.",
+      "evidence_ids": [
+        "E13",
+        "E24",
+        "E26"
+      ],
+      "common_columns": true,
+      "fields": [
+        {
+          "name": "source_media_uid",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Source media identity; not the generated search image UUID.",
+          "source": "@admin/uid",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "source_media_id",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Source internal media ID.",
+          "source": "@admin/id",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "source_media_uuid",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Source media UUID string.",
+          "source": "@admin/uuid",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "source_system",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied media source.",
+          "source": "@admin/source",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "media_type_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied type, including image or document.",
+          "source": "@type",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "entity_marker",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied entity marker.",
+          "source": "@entity",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "position_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied position string; retain separately from array order.",
+          "source": "position/value",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "upload_sort_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied upload-sort string; no timezone inference.",
+          "source": "upload_sort",
+          "normalization": "preserve source value; no semantic normalization"
+        }
+      ]
+    },
+    {
+      "name": "media_representations",
+      "grain": "One member of a media occurrence's @processed object.",
+      "source_patterns": [
+        "media /@processed/{representation_name}"
+      ],
+      "purpose": "Keep every thumbnail, original and other rendition, including non-images and missing local files.",
+      "scope": "Root record and explicitly owned embedded occurrences; see ownership rules.",
+      "evidence_ids": [
+        "E24",
+        "E26"
+      ],
+      "common_columns": true,
+      "fields": [
+        {
+          "name": "media_occurrence_id",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Foreign key to media_occurrences.row_id.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "representation_name",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Exact @processed key, e.g. medium_thumbnail, zoom or original; open vocabulary.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "location_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Unchanged source location, without URL decoding, path rewriting or invented host.",
+          "source": "location",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "type_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Representation media type.",
+          "source": "@type",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "format_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied format string.",
+          "source": "format",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "resizable_raw",
+          "type": "bool",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied boolean.",
+          "source": "resizable",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "modified_raw",
+          "type": "int64",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Source modified integer; preserve unit until verified.",
+          "source": "modified",
+          "normalization": "preserve source value; no semantic normalization"
+        }
+      ]
+    },
+    {
+      "name": "rights_statements",
+      "grain": "One rights entry, credit statement or access assertion at its original owner.",
+      "source_patterns": [
+        "owned /legal/rights/*",
+        "owned /legal/credit",
+        "media /credit",
+        "/legal/access",
+        "/access/conditions",
+        "/access/note/*"
+      ],
+      "purpose": "Separate object/document rights, image rights, credits and physical access statements without deriving permission.",
+      "scope": "Root record and explicitly owned embedded occurrences; see ownership rules.",
+      "evidence_ids": [
+        "E14",
+        "E24",
+        "E27"
+      ],
+      "common_columns": true,
+      "fields": [
+        {
+          "name": "statement_kind",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "legal_right, legal_credit, media_credit, legal_access, access_condition or access_note; source access.rights permissions are excluded from typed projection.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "licence_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Exact supplied licence spelling; blank or absent is not clearance.",
+          "source": "licence",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "copyright_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Exact supplied copyright notice.",
+          "source": "copyright",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "holder_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied rights holder.",
+          "source": "holder",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "type_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied rights type.",
+          "source": "type",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "statement_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Supplied rights statement.",
+          "source": "statement",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "details_raw",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Source details text.",
+          "source": "details",
+          "normalization": "preserve source value; no semantic normalization"
+        },
+        {
+          "name": "credit_or_access_value",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Exact scalar or value for a credit/access assertion.",
+          "source": "scalar or value",
+          "normalization": "preserve source value; no semantic normalization"
+        }
+      ]
+    },
+    {
+      "name": "annotations",
+      "grain": "One optional, evidence-backed interpretation or issue for a row or field.",
+      "source_patterns": [
+        "review evidence"
+      ],
+      "purpose": "Record known, unknown, conflicting and explicitly inapplicable meanings without overwriting raw assertions.",
+      "scope": "Optional review layer within the release; it does not establish missingness from absent statements.",
+      "evidence_ids": [
+        "E16",
+        "E21",
+        "E22"
+      ],
+      "common_columns": false,
+      "fields": [
+        {
+          "name": "annotation_id",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Unique annotation identifier.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "snapshot_id",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Foreign key to records.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "subject_table",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Table containing the reviewed row.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "subject_row_id",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Reviewed row or record snapshot ID.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "field_name",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Reviewed field; null means the complete row.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "evidence_state",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "known, unknown, conflict or not_applicable; absent annotation means not_reviewed.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "issue_code",
+          "type": "string",
+          "nullable": true,
+          "unit": null,
+          "meaning": "Open code such as ambiguous_source_semantics or contradictory_bounds.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "evidence_pointers",
+          "type": "list<string>",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Exact source pointers supporting the interpretation.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "rationale",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Reason for the interpretation or unresolved issue.",
+          "source": null,
+          "normalization": "generated"
+        },
+        {
+          "name": "method_version",
+          "type": "string",
+          "nullable": false,
+          "unit": null,
+          "meaning": "Rule version or named review method; no unversioned inference.",
+          "source": null,
+          "normalization": "generated"
+        }
+      ]
+    }
+  ]
+}

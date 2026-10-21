@@ -76,6 +76,17 @@ images with different or unspecified rights. The export name is a selection of
 records, not a blanket licence for every associated file.
 [Source: SMG usage guidance](https://coimages.sciencemuseumgroup.org.uk/datasets/index.html).
 
+### Proposed bronze tables
+
+The [bronze tabular schema proposal](docs/bronze_schema/README.md) defines a new
+representation of the original object and document JSON exports, independent of
+the official CSV. It preserves every record and media occurrence, original
+payloads, source identity, relationships, repeated assertions and their context.
+Its field catalog and decision register document projected fields, unresolved
+meanings and fields retained only in the payload. The schema is a design;
+conversion to these tables has not been implemented. Existing silver-to-gold and
+search ingestion behavior remains as described here.
+
 ## What CC means
 
 **CC means Creative Commons**, a family of standard copyright licences. The

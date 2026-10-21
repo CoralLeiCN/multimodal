@@ -160,5 +160,10 @@ and empty fields for rows whose image paths match local files. Run
 output fields; [data processing rules](data_processing_spec.md) define date handling.
 Generated data is ignored by Git.
 
+The proposed [bronze tabular schema](docs/bronze_schema/README.md) starts from the
+raw object and document JSON exports. It defines linked Parquet tables, source
+evidence and preservation decisions independently of the official CSV. This is
+a schema design; its extractor has not been implemented.
+
 Attribution: © The Board of Trustees of the Science Museum.
 Source: [Science Museum Group Collection](https://collection.sciencemuseumgroup.org.uk/).

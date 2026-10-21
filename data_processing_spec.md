@@ -1,5 +1,10 @@
 # Data processing specification
 
+The [proposed bronze tabular schema](docs/bronze_schema/README.md) preserves raw
+date assertions, including their bounds, roles, notes and source context. Its
+extractor is not implemented. The search interpretation below does not replace
+those raw assertions or change their proposed bronze representation.
+
 ## Special date rule: circa year
 
 When a date has no structured `from` or `to` bounds, interpret `c.` followed
