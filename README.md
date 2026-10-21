@@ -40,9 +40,9 @@ The [deployment guide](docs/huggingface_spaces.md) tracks the remaining work and
 provides a reproducible preview with local PostgreSQL, Qdrant, and the app on
 port 7860.
 
-A later release will publish the collection datasets on Hugging Face. The
-[publication plan](data_spec.md#planned-hugging-face-dataset-publication) covers
-release contents, source identifiers, and attribution.
+Dataset preparation and publishing are maintained in `smg-datasets`. This app
+loads its prepared Hugging Face `catalogue` configuration. Set the repository ID
+and immutable commit revision as described in the [dataset contract](data_processing_spec.md).
 
 ## Run locally
 
@@ -63,9 +63,12 @@ Run `make migrate` before serving after a schema update; search startup performs
 no migrations. The HF edition can read Neon over HTTPS with
 `CATALOGUE_TRANSPORT=neon_http`. Local and web editions use `postgres` by default.
 
-For a new index, place the object JSON export under `data/bronze/` and extracted
-thumbnails under `data/images/`, or configure `IMAGE_ROOT` and pass a metadata
-path. Setup does not download collection data. See [data sources and paths](data_spec.md).
+For a new index, set `HF_DATASET_ID=YOUR_ACCOUNT/YOUR_DATASET` and
+`HF_DATASET_REVISION` to the published dataset's full commit SHA in `.env.local`.
+The ID remains a placeholder until supplied. To review an unpublished local
+package, use `HF_DATASET_PATH=/absolute/path/to/package` instead. The indexer
+loads prepared catalogue rows through Hugging Face Datasets and caches selected
+original image bytes under `IMAGE_ROOT` (default `data/hf-images`).
 For local Qdrant, set `QDRANT_URL=http://127.0.0.1:6333` and leave
 `QDRANT_API_KEY` empty, then run:
 
@@ -89,7 +92,7 @@ to `data/models/`; later runs reuse them. Use `HF_HUB_OFFLINE=1` after preparing
 the cache. Short descriptions work best because the model accepts 64 text tokens.
 Model or preprocessing changes require a separate index and an API restart.
 
-`make preview-index` selects up to 50 images from 1,000 records without embedding.
+`make preview-index` selects up to 50 images from 1,000 prepared image rows without embedding.
 Plain `make index` resumes the saved selection and skips verified indexed images.
 Use `LIMIT` and `SCAN_LIMIT` to select a new sample, or
 `INDEX_ARGS="--resume RUN_ID"` to choose a saved run. For CPU inference, use
@@ -97,10 +100,9 @@ Use `LIMIT` and `SCAN_LIMIT` to select a new sample, or
 restart after publication. Full selection, recovery, and maintenance commands
 are in the [indexing guide](cronjob/README.md#sample-and-index-images).
 
-Collection images use a private Hugging Face Storage Bucket mounted read-only at
-`IMAGE_ROOT`. Local development uses `data/images/` or the preview's bind mount.
-Keep catalogue relative paths unchanged when uploading; indexing reads those
-same files. See [mounted image storage](backend/README.md#mounted-image-storage).
+Collection images are cached directly from the pinned Hugging Face dataset at
+`IMAGE_ROOT`. Both editions use that cache or a read-only mounted copy with the
+same relative paths. See [mounted image storage](backend/README.md#mounted-image-storage).
 
 ## Development and checks
 
@@ -138,32 +140,15 @@ the standalone agent API; `make agent-worker` processes its queue. The web compa
 
 ## Collection data
 
-Sources: [SMG datasets](https://coimages.sciencemuseumgroup.org.uk/datasets/index.html)
-and [SMG Collection](https://collection.sciencemuseumgroup.org.uk/).
-The project uses the object and document exports named `with_CC_images` and the
-medium-thumbnail archive. Reuse depends on each image's specific Creative Commons
-licence, including attribution and any NonCommercial, ShareAlike, or NoDerivatives
-conditions. Consult [data and licensing notes](data_spec.md) before reuse.
+`smg-datasets` owns original-source processing, schema research, normalization,
+image matching, release eligibility and Hugging Face publication. This repository
+owns application indexing and retrieval. The old matching and CSV-to-Parquet
+scripts have been removed; no raw SMG JSON or CSV is required here.
 
-| Layer | Location | Contents |
-| --- | --- | --- |
-| Bronze | `data/bronze/` | Original object and document JSON exports. |
-| Silver | `data/silver/` | Official SMG processed object CSV. |
-| Gold | `data/gold/` | Silver rows with available local images, stored as Parquet. |
-| Images | `data/images/` | Extracted thumbnails with their original relative paths. |
-
-Generate `data/gold/object_records.parquet` with
-`uv run cronjob/silver_to_gold.py`. The converter preserves columns, text values,
-and empty fields for rows whose image paths match local files. Run
-`python3 cronjob/match_images.py` for an optional manifest and coverage audit under
-`data/processed/`. The [pipeline guide](cronjob/README.md) documents options and
-output fields; [data processing rules](data_processing_spec.md) define date handling.
-Generated data is ignored by Git.
-
-The proposed [bronze tabular schema](docs/bronze_schema/README.md) starts from the
-raw object and document JSON exports. It defines linked Parquet tables, source
-evidence and preservation decisions independently of the official CSV. This is
-a schema design; its extractor has not been implemented.
+See [data and attribution](data_spec.md), [the prepared dataset contract](data_processing_spec.md)
+and [indexing commands](cronjob/README.md). Migration `0006` records the dataset
+release and source association provenance. Existing vectors remain usable; new
+selections must match their permanent collection's recorded dataset revision.
 
 Attribution: © The Board of Trustees of the Science Museum.
 Source: [Science Museum Group Collection](https://collection.sciencemuseumgroup.org.uk/).

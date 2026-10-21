@@ -17,7 +17,7 @@ INDEX_COMMAND = $(BACKEND_RUN) cronjob/index_images.py $(if $(strip $(LIMIT)),--
 
 .PHONY: help setup \
 	build run backend dev generate-client \
-	qdrant-up qdrant-down preview-index index gold match-images migrate \
+	qdrant-up qdrant-down preview-index index migrate \
 	test lint check \
 	agent-api agent-worker agent-test space web web-backend web-dev studio build-web build-studio
 
@@ -67,12 +67,6 @@ preview-index: ## Preview the sample without embedding requests or Qdrant writes
 
 index: ## Reuse saved selection; set LIMIT to select a new sample
 	$(INDEX_COMMAND)
-
-gold: ## Convert the official silver CSV to gold Parquet
-	$(UV) run cronjob/silver_to_gold.py
-
-match-images: ## Create the optional image manifest and coverage report
-	$(UV) run cronjob/match_images.py
 
 ##@ Validation
 

@@ -1,82 +1,14 @@
-import json
-
 import pytest
 from app.main import create_app
 from app.models import Association, Generation, Image, Ingestion
 from app.schemas import MetadataFilters
-from app.services.ingestion import create_generation, run_ingestion
-from app.services.metadata import catalogue_filter, extract_metadata
+from app.services.ingestion import run_ingestion
+from app.services.metadata import catalogue_filter
 from app.services.metadata_refresh import refresh_metadata
+from conftest import create_generation
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlmodel import Session, select
-
-
-def test_source_ranges_labels_and_unknown_dates():
-    metadata = extract_metadata(
-        {
-            "creation": {
-                "date": [
-                    {"from": "1850", "to": "1870", "value": "circa 1860"},
-                    {"from": "1850", "to": "1870"},
-                    {"from": "-400", "to": "-350"},
-                    {"from": "1950-01-01", "to": "1951-12-31"},
-                    {"value": "1900"},
-                    {"value": "probably eighteenth century"},
-                    {"from": "0", "to": "0"},
-                    {"from": "2000", "to": "1900"},
-                    {"from": "1800", "value": "1800"},
-                    {"from": "1900-02-29", "to": "1900-03-01"},
-                    {"from": "1950-13-01", "to": "1951-01-01"},
-                ],
-                "place": [
-                    {"summary": {"title": "London"}},
-                    {"name": [{"value": "london"}]},
-                    {"summary": {"title": "London, England"}},
-                ],
-            },
-            "date": [{"from": "2025", "to": "2025"}],
-            "category": [
-                {"name": "Optics", "value": "SCM - Optics"},
-                {"name": "OPTICS"},
-            ],
-        }
-    )
-    assert metadata == {
-        "places": ["London", "London, England"],
-        "categories": ["Optics"],
-        "date_ranges": [
-            {"date_from": -400, "date_to": -350},
-            {"date_from": 1850, "date_to": 1870},
-            {"date_from": 1900, "date_to": 1900},
-            {"date_from": 1950, "date_to": 1951},
-        ],
-    }
-    assert extract_metadata({"date": [{"from": "1800", "to": "1810"}]})[
-        "date_ranges"
-    ] == [{"date_from": 1800, "date_to": 1810}]
-    assert extract_metadata({}) == {"places": [], "categories": [], "date_ranges": []}
-
-
-@pytest.mark.parametrize(
-    "date, expected",
-    [
-        ({"value": "c.1993"}, [(1993, 1993)]),
-        ({"value": " C. 1993 "}, [(1993, 1993)]),
-        ({"value": "c.-400"}, [(-400, -400)]),
-        ({"value": "c.0"}, []),
-        ({"value": "c.10000"}, []),
-        ({"value": "circa 1993"}, []),
-        ({"value": "c.1990-1995"}, []),
-        ({"value": "c.1993", "from": "1990", "to": "1995"}, [(1990, 1995)]),
-        ({"value": "c.1993", "from": "1990"}, []),
-        ({"value": "c.1993", "from": "1995", "to": "1990"}, []),
-    ],
-)
-def test_circa_year_rule_respects_bounds_and_validation(date, expected):
-    assert extract_metadata({"creation": {"date": [date]}})["date_ranges"] == [
-        {"date_from": start, "date_to": end} for start, end in expected
-    ]
 
 
 @pytest.mark.parametrize(
@@ -219,34 +151,44 @@ def test_image_similarity_and_invalid_filter_requests(setup):
 
 
 @pytest.mark.parametrize("ready", [False, True])
-def test_refresh_preserves_vectors_and_ingestion_state(setup, tmp_path, ready):
+def test_refresh_preserves_vectors_and_ingestion_state(
+    setup, tmp_path, ready, monkeypatch
+):
     settings, engine, selected, _report, generation_id, vectors, embeddings = setup
     if ready:
         run_ingestion(engine, settings, generation_id, embeddings, vectors)
-    metadata = tmp_path / "fixture.json"
-    metadata.write_text(
-        json.dumps(
-            [
-                {
-                    "@admin": {"uid": item["associations"][0]["record_uid"]},
-                    "creation": {
-                        "date": [{"value": "c.1993"}],
-                        "place": [{"summary": {"title": "Edinburgh"}}],
-                    },
-                    "category": [{"name": "Science"}],
-                }
-                for item in selected
-            ]
-        )
+    from copy import deepcopy
+
+    from conftest import prepare_fixture
+
+    prepared = deepcopy(selected)
+    for item in prepared:
+        item["schema_version"] = "1.0.0"
+        for association in item["associations"]:
+            association.update(
+                date="c.1993",
+                places=["Edinburgh"],
+                categories=["Science"],
+                date_ranges=[{"date_from": 1993, "date_to": 1993}],
+            )
+    prepare_fixture(prepared)
+    release = {
+        "repo_id": "owner/dataset",
+        "revision": "a" * 40,
+        "schema_version": "1.0.0",
+    }
+    monkeypatch.setattr(
+        "app.services.metadata_refresh.load_catalogue",
+        lambda *args, **kwargs: (iter(prepared), release),
     )
     calls = embeddings.calls
     with pytest.raises(ValueError, match="nothing was changed"):
-        refresh_metadata(engine, settings, generation_id, [metadata], 2, vectors)
+        refresh_metadata(engine, settings, generation_id, 2, vectors)
     with Session(engine) as session:
         assert session.get(
             Image, (generation_id, selected[0]["image_id"])
         ).filter_metadata[0]["place"] == ["london"]
-    result = refresh_metadata(engine, settings, generation_id, [metadata], 3, vectors)
+    result = refresh_metadata(engine, settings, generation_id, 3, vectors)
     assert result["payloads_updated"] == (3 if ready else 0)
     assert embeddings.calls == calls
     with Session(engine) as session:
@@ -277,19 +219,20 @@ def test_refresh_preserves_vectors_and_ingestion_state(setup, tmp_path, ready):
         assert str(points[0].id) == selected[0]["image_id"]
         for year, expected in [(1992, 0), (1993, 3), (1994, 0)]:
             filters = MetadataFilters(date_from=year, date_to=year)
-            assert len(
-                vectors.search(generation, [1.0, 0.0, 0.0], 10, filters=filters)
-            ) == expected
+            assert (
+                len(vectors.search(generation, [1.0, 0.0, 0.0], 10, filters=filters))
+                == expected
+            )
             with Session(engine) as session:
-                assert len(
-                    session.exec(
-                        select(Image).where(
-                            Image.generation_id == generation_id,
-                            catalogue_filter(filters),
-                        )
-                    ).all()
-                ) == expected
-    assert (
-        refresh_metadata(engine, settings, generation_id, [metadata], 3, vectors)
-        == result
-    )
+                assert (
+                    len(
+                        session.exec(
+                            select(Image).where(
+                                Image.generation_id == generation_id,
+                                catalogue_filter(filters),
+                            )
+                        ).all()
+                    )
+                    == expected
+                )
+    assert refresh_metadata(engine, settings, generation_id, 3, vectors) == result

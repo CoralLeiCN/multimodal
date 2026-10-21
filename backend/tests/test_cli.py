@@ -9,7 +9,9 @@ def test_prepare_only_saves_selection_without_external_calls(setup, monkeypatch)
     monkeypatch.setattr(index_images, "select_images", lambda *args: (selected, report))
 
     def forbidden(*_args):
-        raise AssertionError("prepare-only must not construct an embedding or vector client")
+        raise AssertionError(
+            "prepare-only must not construct an embedding or vector client"
+        )
 
     monkeypatch.setattr(index_images, "VectorStore", forbidden)
     monkeypatch.setattr(index_images, "create_embeddings", forbidden)
@@ -44,7 +46,7 @@ def test_invalid_cli_options_exit_two(args):
 def test_large_selection_limits_reach_sampler(monkeypatch):
     calls = []
 
-    def select_sample(settings, metadata, limit, scan_limit, seed):
+    def select_sample(settings, limit, scan_limit, seed):
         calls.append((limit, scan_limit, seed))
         return [{"title": "Sample image"}], {"selected": 1}
 
@@ -57,9 +59,7 @@ def test_large_selection_limits_reach_sampler(monkeypatch):
     monkeypatch.setattr(index_images, "ingestion_lock", lambda *a, **k: nullcontext())
     monkeypatch.setattr(index_images, "select_images", select_sample)
     assert (
-        index_images.main(
-            ["--limit", "5000", "--scan-limit", "50000", "--dry-run"]
-        )
+        index_images.main(["--limit", "5000", "--scan-limit", "50000", "--dry-run"])
         == 0
     )
     assert calls == [(5000, 50000, 42)]
@@ -152,7 +152,7 @@ def test_no_limit_reuses_saved_selection_without_sampling(
 def test_no_limit_rejects_missing_or_ambiguous_selection(
     saved_cli, monkeypatch, capsys
 ):
-    from app.services.ingestion import create_generation
+    from conftest import create_generation
 
     settings, engine, selected, report, _, _, _ = saved_cli
     create_generation(engine, settings, selected, report)
@@ -174,7 +174,7 @@ def test_no_limit_prefers_configured_collection_over_other_generations(
     saved_cli, monkeypatch
 ):
     from app.models import Generation
-    from app.services.ingestion import create_generation
+    from conftest import create_generation
     from sqlmodel import Session
 
     settings, engine, selected, report, generation_id, _, _ = saved_cli
@@ -193,7 +193,7 @@ def test_explicit_limit_still_selects_images(saved_cli, monkeypatch):
     _, engine, selected, report, original_id, _, _ = saved_cli
     calls = []
 
-    def select_sample(settings, metadata, limit, scan_limit, seed):
+    def select_sample(settings, limit, scan_limit, seed):
         calls.append((limit, scan_limit, seed))
         return selected[:limit], report
 

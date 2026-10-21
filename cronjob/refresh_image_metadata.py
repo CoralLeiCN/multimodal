@@ -4,9 +4,8 @@
 import argparse
 import json
 import sys
-from pathlib import Path
 
-from app.core.config import ROOT, Settings
+from app.core.config import Settings
 from app.core.db import make_engine, migrate
 from app.core.locking import ingestion_lock
 from app.services.embeddings import SearchError
@@ -17,11 +16,10 @@ from app.services.qdrant_store import VectorStore
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--generation", required=True)
-    parser.add_argument("--metadata", type=Path, action="append")
     parser.add_argument("--scan-limit", type=int, default=1000)
     args = parser.parse_args(argv)
-    if not 1 <= args.scan_limit <= 10000:
-        parser.error("scan-limit must be 1–10000")
+    if args.scan_limit < 1:
+        parser.error("scan-limit must be positive")
     settings = Settings()
     engine = vectors = None
     try:
@@ -29,16 +27,12 @@ def main(argv=None):
             migrate(settings)
             engine = make_engine(settings)
             vectors = VectorStore(settings)
-            metadata = args.metadata or sorted(
-                (ROOT / "data/bronze").glob("smg_object_records*.json")
-            )
             print(
                 json.dumps(
                     refresh_metadata(
                         engine,
                         settings,
                         args.generation,
-                        metadata,
                         args.scan_limit,
                         vectors,
                     )

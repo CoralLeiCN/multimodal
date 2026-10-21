@@ -24,7 +24,7 @@ from app.explore.concurrency import blocking, complete
 from app.explore.contracts import Answer
 from app.explore.db import migrate
 from app.explore.models import Conversation, Event, Run, Upload, uid
-from app.services.selection import validate_image
+from app.services.image_files import validate_image
 
 TERMINAL = {"succeeded", "failed", "cancelled", "timed_out"}
 

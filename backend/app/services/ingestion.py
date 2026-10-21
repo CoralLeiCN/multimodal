@@ -26,8 +26,7 @@ from app.models import (
     now,
 )
 from app.services.embeddings import SearchError, normalize
-from app.services.metadata import filter_rows
-from app.services.selection import safe_path
+from app.services.image_files import safe_path
 
 # Bound SQL parameter counts independently of embedding batch sizes.
 CATALOGUE_BATCH_SIZE = 500
@@ -35,7 +34,7 @@ CATALOGUE_BATCH_SIZE = 500
 
 def image_values(item):
     values = {key: item[key] for key in Image.model_fields if key in item}
-    values["filter_metadata"] = filter_rows(item["associations"])
+    values["filter_metadata"] = item["filter_metadata"]
     return values
 
 
@@ -78,6 +77,14 @@ def create_generation(
                     raise ValueError(
                         "Permanent collection requires the original embedding settings."
                     )
+                release = report.get("dataset", {})
+                if (existing.dataset_repo_id, existing.dataset_revision) != (
+                    release.get("repo_id", ""),
+                    release.get("revision", ""),
+                ):
+                    raise ValueError(
+                        "Permanent collection belongs to a different dataset release. Use a new collection or explicitly refresh its complete metadata first."
+                    )
                 existing_id = existing.id
             else:
                 existing_id = None
@@ -93,6 +100,9 @@ def create_generation(
         model=settings.embedding_model,
         dimensions=settings.embedding_dimensions,
         config_hash=settings.config_hash,
+        dataset_repo_id=report.get("dataset", {}).get("repo_id", ""),
+        dataset_revision=report.get("dataset", {}).get("revision", ""),
+        dataset_schema_version=report.get("dataset", {}).get("schema_version", ""),
         count=len(selected),
         scanned=report["scanned"],
         skipped=sum(report["skipped"].values()),

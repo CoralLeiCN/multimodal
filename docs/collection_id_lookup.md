@@ -8,8 +8,8 @@ catalogue using exact equality on `image_associations.record_uid`.
 
 | Identifier | Location and meaning |
 | --- | --- |
-| Collection record ID, such as `co25823` | Bronze `@admin.uid`, silver/gold `uid`, and PostgreSQL `image_associations.record_uid` identify the same source record. |
-| Object number | Silver/gold `identifier` and PostgreSQL `catalogue_identifiers` hold catalogue references such as accession numbers. |
+| Collection record ID, such as `co25823` | Prepared dataset associations and PostgreSQL `image_associations.record_uid` identify the same source record. |
+| Object number | Published record `identifiers` and PostgreSQL `catalogue_identifiers` hold catalogue references such as accession numbers. |
 | Source image ID | Bronze `multimedia[*].@admin.uid` is preserved as PostgreSQL `image_uid`. |
 | Indexed image UUID | PostgreSQL `images.image_id` and the Qdrant point ID are generated from the thumbnail location. Image API routes accept this UUID. |
 
@@ -32,8 +32,7 @@ Scope joins by both `generation_id` and `image_id` to keep historical runs separ
    backend's configured host and port.
 5. If there are no matches, report that the record has no images in the active
    indexed catalogue. This does not establish whether it exists in the full SMG
-   dataset. To investigate source coverage, match gold `uid` or bronze
-   `@admin.uid` separately and label those results as source records.
+   dataset. To investigate source coverage, match the published object/document `record_uid` separately and label those results as source records.
 
 Text search embeds descriptions with SigLIP 2. Collection ID lookup uses the
 exact PostgreSQL procedure below; the search box has no identifier detection.

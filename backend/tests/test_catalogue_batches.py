@@ -4,7 +4,8 @@ from uuid import UUID
 
 import pytest
 from app.models import Association, Generation, Image, Ingestion
-from app.services.ingestion import create_generation, save_selection
+from app.services.ingestion import save_selection
+from conftest import create_generation
 from sqlalchemy import event
 from sqlmodel import Session, select
 

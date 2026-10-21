@@ -27,7 +27,7 @@ from app.services.deadline import (
     timeout_error,
 )
 from app.services.embeddings import SearchError
-from app.services.selection import safe_path
+from app.services.image_files import safe_path
 
 SEARCH_TIMEOUT_SECONDS = 30
 STATUS_CHECK_WAIT_SECONDS = 0.1

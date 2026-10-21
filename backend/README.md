@@ -305,7 +305,9 @@ connection. A Neon pooled hostname can derive the direct hostname when omitted.
 Configure `QDRANT_URL`, `QDRANT_API_KEY`, and `QDRANT_COLLECTION_NAME` in `.env`.
 Use the exact collection and embedding settings associated with the ready
 catalogue generation. Image delivery needs local files under `IMAGE_ROOT` or
-a mounted HF bucket. Indexing needs source exports and readable image bytes.
+a mounted copy of the HF dataset image cache. Indexing loads prepared catalogue
+rows from `HF_DATASET_ID` at `HF_DATASET_REVISION` (a full commit SHA), or from
+`HF_DATASET_PATH` for a local review package.
 Reuse a ready index with `make run`; there is no need to index it again.
 
 Indexing and metadata refresh share a PostgreSQL advisory lock to prevent
@@ -319,11 +321,10 @@ policy; FastAPI and the frontend are hosted separately from Neon.
 
 ### Mounted image storage
 
-Use a private Hugging Face Storage Bucket mounted read-only at `/app/data/images`
-and set `IMAGE_ROOT=/app/data/images` in the Space. For local development, use
-`data/images/` or a read-only bind mount. Keep paths relative to this root intact,
-including the extracted thumbnail directory. The catalogue stores `relative_path`
-and the image checksum; it has no provider URL field.
+The dataset consumer downloads prepared catalogue shards, verifies their release
+hashes and caches selected original bytes at `IMAGE_ROOT/hf/<sha256>.<extension>`.
+The default root is `data/hf-images`. Both serving editions use this cache or a
+read-only mounted copy. Keep catalogue relative paths and bytes unchanged.
 
 The `/file` endpoint checks membership in the active generation, resolves the
 path within `IMAGE_ROOT`, and serves bytes with `Cache-Control: private, max-age=300`.
